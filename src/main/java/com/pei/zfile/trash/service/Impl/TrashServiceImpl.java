@@ -23,7 +23,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 public class TrashServiceImpl implements TrashService {
@@ -50,15 +49,19 @@ public class TrashServiceImpl implements TrashService {
                         .select(FileNode::getId)
                         .eq(FileNode::getOwnerId, userId)
                         .eq(FileNode::getStatus, "TRASHED")
-        ).stream().map(FileNode::getId).collect(Collectors.toList());
+        ).stream().map(FileNode::getId).toList();
 
         LambdaQueryWrapper<FileNode> wrapper = new LambdaQueryWrapper<FileNode>()
                 .eq(FileNode::getOwnerId, userId)
                 .eq(FileNode::getStatus, "TRASHED")
                 .orderByDesc(FileNode::getDeletedAt);
 
-        wrapper.and(w -> w.isNull(FileNode::getParentId)
-                .or(w2 -> w2.notIn(!trashedNodeIds.isEmpty(), FileNode::getParentId, trashedNodeIds)));
+        wrapper.and(w -> {
+            w.isNull(FileNode::getParentId);
+            if (!trashedNodeIds.isEmpty()) {
+                w.or().notIn(FileNode::getParentId, trashedNodeIds);
+            }
+        });
 
         Page<FileNode> result = fileNodeMapper.selectPage(page, wrapper);
         List<NodeResponse> items = result.getRecords().stream()
