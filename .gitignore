@@ -18,6 +18,12 @@ target/
 *.iws
 *.iml
 *.ipr
+TODO-PLAN
+.gitattributes
+mvnw
+mvnw.cmd
+.mvn
+package-info.java
 
 ### NetBeans ###
 /nbproject/private/
