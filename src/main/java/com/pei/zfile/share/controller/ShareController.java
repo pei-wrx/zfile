@@ -11,8 +11,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 
 @Slf4j
+@Validated
 @RestController
 @RequestMapping("/shares")
 public class ShareController {
@@ -34,9 +39,11 @@ public class ShareController {
      * 查询我的分享
      */
     @GetMapping
-    public Result<PageResult<ShareResponse>> list(@RequestParam(required = false) String status,
-                                                   @RequestParam(defaultValue = "1") int page,
-                                                   @RequestParam(defaultValue = "20") int size) {
+    public Result<PageResult<ShareResponse>> list(
+            @RequestParam(required = false)
+            @Pattern(regexp = "ACTIVE|CANCELLED|EXPIRED", message = "分享状态不正确") String status,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getPrincipal().toString());
         PageResult<ShareResponse> pageResult = shareService.list(userId, status, page, size);
         return Result.success(pageResult);

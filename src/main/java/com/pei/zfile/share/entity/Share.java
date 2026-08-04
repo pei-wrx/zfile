@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @EqualsAndHashCode(callSuper = false)
@@ -25,7 +26,7 @@ public class Share {
 
     private String passwordHash;
 
-    private LocalDateTime expiresAt;
+    private Instant expiresAt;
 
     private Integer downloadLimit;
 

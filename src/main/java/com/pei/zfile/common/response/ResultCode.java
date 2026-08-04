@@ -24,6 +24,7 @@ public enum ResultCode {
     USER_NOT_FOUND("USER_NOT_FOUND", "用户不存在"),
     FILE_NOT_FOUND("FILE_NOT_FOUND", "节点不存在"),
     SHARE_NOT_FOUND("SHARE_NOT_FOUND", "分享不存在"),
+    RESOURCE_NOT_FOUND("RESOURCE_NOT_FOUND", "请求资源不存在"),
 
     // 409
     FILE_NAME_CONFLICT("FILE_NAME_CONFLICT", "目标目录中已存在同名文件"),
@@ -39,6 +40,9 @@ public enum ResultCode {
 
     // 422
     QUOTA_EXCEEDED("QUOTA_EXCEEDED", "用户空间不足"),
+
+    // 415
+    UNSUPPORTED_MEDIA_TYPE("UNSUPPORTED_MEDIA_TYPE", "不支持预览该文件类型"),
 
     // 429
     TOO_MANY_REQUESTS("TOO_MANY_REQUESTS", "请求过于频繁，请稍后重试"),

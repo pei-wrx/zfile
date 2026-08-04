@@ -45,7 +45,8 @@ public class TrashController {
      * 恢复指定的回收站节点
      */
     @PostMapping("/{nodeId}/restore")
-    public Result<NodeResponse> restore(@PathVariable("nodeId") Long nodeId,@RequestBody @Valid RestoreNodeRequest request) {
+    public Result<NodeResponse> restore(@PathVariable("nodeId") Long nodeId,
+                                        @RequestBody(required = false) @Valid RestoreNodeRequest request) {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getPrincipal().toString());
         NodeResponse response = trashService.restoreNode(userId, nodeId, request);
         return Result.success(response);

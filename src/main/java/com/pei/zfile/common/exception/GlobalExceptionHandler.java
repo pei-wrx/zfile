@@ -10,6 +10,12 @@ import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import jakarta.validation.ConstraintViolationException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.bind.ServletRequestBindingException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -114,6 +120,40 @@ public class GlobalExceptionHandler {
                 .body(Result.error(ResultCode.INVALID_OPERATION, ex.getMessage()));
     }
 
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Result<Void>> handleConstraintViolation(
+            ConstraintViolationException ex, HttpServletRequest request) {
+        log.warn("请求参数校验失败 - uri={}, message={}", request.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Result.error(ResultCode.VALIDATION_ERROR, ex.getMessage()));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Result<Void>> handleMaxUploadSizeExceeded(
+            MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        log.warn("上传文件超过限制 - uri={}", request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(Result.error(ResultCode.FILE_TOO_LARGE));
+    }
+
+    @ExceptionHandler({
+            HttpMessageNotReadableException.class,
+            MethodArgumentTypeMismatchException.class,
+            ServletRequestBindingException.class
+    })
+    public ResponseEntity<Result<Void>> handleMalformedRequest(Exception ex, HttpServletRequest request) {
+        log.warn("请求格式错误 - uri={}, message={}", request.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Result.error(ResultCode.VALIDATION_ERROR, "请求参数或消息体格式不正确"));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Result<Void>> handleNoResourceFound(
+            NoResourceFoundException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Result.error(ResultCode.RESOURCE_NOT_FOUND));
+    }
+
     /**
      * 处理所有未捕获的异常，统一返回 500 内部错误。
      * <p>
@@ -161,11 +201,12 @@ public class GlobalExceptionHandler {
             case VALIDATION_ERROR, INVALID_OPERATION -> HttpStatus.BAD_REQUEST;
             case UNAUTHORIZED, INVALID_CREDENTIALS -> HttpStatus.UNAUTHORIZED;
             case FORBIDDEN, SHARE_PASSWORD_REQUIRED, SHARE_PASSWORD_INVALID -> HttpStatus.FORBIDDEN;
-            case USER_NOT_FOUND, FILE_NOT_FOUND, SHARE_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case USER_NOT_FOUND, FILE_NOT_FOUND, SHARE_NOT_FOUND, RESOURCE_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case FILE_NAME_CONFLICT, USERNAME_EXISTS, EMAIL_EXISTS -> HttpStatus.CONFLICT;
             case SHARE_EXPIRED, DOWNLOAD_LIMIT_REACHED -> HttpStatus.GONE;
             case FILE_TOO_LARGE -> HttpStatus.PAYLOAD_TOO_LARGE;
             case QUOTA_EXCEEDED -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case UNSUPPORTED_MEDIA_TYPE -> HttpStatus.UNSUPPORTED_MEDIA_TYPE;
             case TOO_MANY_REQUESTS -> HttpStatus.TOO_MANY_REQUESTS;
             case STORAGE_ERROR, INTERNAL_ERROR -> HttpStatus.INTERNAL_SERVER_ERROR;
         };

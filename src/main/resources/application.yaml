@@ -10,6 +10,7 @@ spring:
     password: 123456
   jackson:
     default-property-inclusion: non_null
+    time-zone: UTC
   data:
     redis:
       host: localhost
@@ -25,14 +26,14 @@ spring:
   servlet:
     multipart:
       max-file-size: 100MB
-      max-request-size: 100MB
+      max-request-size: 101MB
 mybatis-plus:
   type-aliases-package: com.pei.zfile.**
   mapper-locations: classpath:mapper/*.xml
   configuration:
     map-underscore-to-camel-case: true
 jwt:
-  secret: ${JWT_SECRET:cloudbox-jwt-secret-key-must-be-at-least-256-bits-long}
+  secret: ${JWT_SECRET:${random.uuid}${random.uuid}}
   access-token-expiration: 1800000
   refresh-token-expiration: 604800000
 z-file:

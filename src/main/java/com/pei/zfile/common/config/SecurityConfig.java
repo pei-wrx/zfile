@@ -18,6 +18,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import com.pei.zfile.user.mapper.UserMapper;
 
 import java.util.List;
 
@@ -29,13 +30,16 @@ public class SecurityConfig {
     private final JwtTokenProvider jwtTokenProvider;
     private final SecurityExceptionHandler securityExceptionHandler;
     private final StringRedisTemplate stringRedisTemplate;
+    private final UserMapper userMapper;
 
     public SecurityConfig(JwtTokenProvider jwtTokenProvider,
                           SecurityExceptionHandler securityExceptionHandler,
-                          StringRedisTemplate stringRedisTemplate) {
+                          StringRedisTemplate stringRedisTemplate,
+                          UserMapper userMapper) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.securityExceptionHandler = securityExceptionHandler;
         this.stringRedisTemplate = stringRedisTemplate;
+        this.userMapper = userMapper;
     }
     //安全过滤链
     @Bean
@@ -53,11 +57,11 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/public/shares/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/public/shares/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/public/shares/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/public/shares/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider, stringRedisTemplate),
+                .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider, stringRedisTemplate, userMapper),
                         UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -70,7 +74,7 @@ public class SecurityConfig {
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setExposedHeaders(List.of("Authorization", "X-Share-Token"));
-        configuration.setAllowCredentials(true);
+        configuration.setAllowCredentials(false);
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

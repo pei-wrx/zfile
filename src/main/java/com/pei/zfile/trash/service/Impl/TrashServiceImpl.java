@@ -18,6 +18,8 @@ import com.pei.zfile.user.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -75,7 +77,7 @@ public class TrashServiceImpl implements TrashService {
                         .eq(FileNode::getStatus, "TRASHED")
         );
 
-        long releasedBytes = releasePhysicalFiles(trashedNodes);
+        long releasedBytes = calculateReleasedBytes(trashedNodes);
 
         if (!trashedNodes.isEmpty()) {
             fileNodeMapper.delete(
@@ -86,11 +88,15 @@ public class TrashServiceImpl implements TrashService {
         }
 
         deductQuota(userId, releasedBytes);
+        deletePhysicalFilesAfterCommit(trashedNodes);
     }
 
     @Override
     @Transactional
     public NodeResponse restoreNode(Long userId, Long nodeId, RestoreNodeRequest request) {
+        if (request == null) {
+            request = new RestoreNodeRequest();
+        }
         FileNode node = fileNodeMapper.selectOne(
                 new LambdaQueryWrapper<FileNode>()
                         .eq(FileNode::getId, nodeId)
@@ -157,13 +163,14 @@ public class TrashServiceImpl implements TrashService {
             allNodes.addAll(collectTrashedDescendants(nodeId, userId));
         }
 
-        long releasedBytes = releasePhysicalFiles(allNodes);
+        long releasedBytes = calculateReleasedBytes(allNodes);
 
         fileNodeMapper.delete(
                 new LambdaQueryWrapper<FileNode>()
                         .in(FileNode::getId, allNodes.stream().map(FileNode::getId).toList())
         );
         deductQuota(userId, releasedBytes);
+        deletePhysicalFilesAfterCommit(allNodes);
     }
 
     private void restoreDescendants(Long folderId, Long userId) {
@@ -201,11 +208,10 @@ public class TrashServiceImpl implements TrashService {
         return allDescendants;
     }
 
-    private long releasePhysicalFiles(List<FileNode> nodes) {
+    private long calculateReleasedBytes(List<FileNode> nodes) {
         long releasedBytes = 0L;
         for (FileNode node : nodes) {
             if ("FILE".equals(node.getNodeType()) && node.getStorageKey() != null) {
-                storageService.delete(node.getStorageKey());
                 releasedBytes += node.getSizeBytes() != null ? node.getSizeBytes() : 0L;
             }
         }
@@ -214,20 +220,23 @@ public class TrashServiceImpl implements TrashService {
 
     private void deductQuota(Long userId, long releasedBytes) {
         if (releasedBytes > 0) {
-            User user = userMapper.selectById(userId);
-            user.setUsedBytes(user.getUsedBytes() - releasedBytes);
-            userMapper.updateById(user);
+            int updated = userMapper.update(null,
+                    new LambdaUpdateWrapper<User>()
+                            .eq(User::getId, userId)
+                            .setSql("used_bytes = GREATEST(used_bytes - " + releasedBytes + ", 0)"));
+            if (updated == 0) {
+                throw new BusinessException(ResultCode.USER_NOT_FOUND);
+            }
         }
     }
 
     private String resolveRestoreNameConflict(Long parentId, Long userId, String name, Long excludeId, String conflictPolicy) {
         boolean nameConflict = fileNodeMapper.exists(
-                new LambdaQueryWrapper<FileNode>()
+                matchParent(new LambdaQueryWrapper<FileNode>()
                         .eq(FileNode::getOwnerId, userId)
-                        .eq(FileNode::getParentId, parentId)
                         .eq(FileNode::getName, name)
                         .eq(FileNode::getStatus, "ACTIVE")
-                        .ne(FileNode::getId, excludeId)
+                        .ne(FileNode::getId, excludeId), parentId)
         );
         if (!nameConflict) {
             return name;
@@ -253,13 +262,31 @@ public class TrashServiceImpl implements TrashService {
             newName = baseName + " (" + counter + ")" + extension;
             counter++;
         } while (fileNodeMapper.exists(
-                new LambdaQueryWrapper<FileNode>()
+                matchParent(new LambdaQueryWrapper<FileNode>()
                         .eq(FileNode::getOwnerId, userId)
-                        .eq(FileNode::getParentId, parentId)
                         .eq(FileNode::getName, newName)
-                        .eq(FileNode::getStatus, "ACTIVE")
+                        .eq(FileNode::getStatus, "ACTIVE"), parentId)
         ));
         return newName;
+    }
+
+    private LambdaQueryWrapper<FileNode> matchParent(LambdaQueryWrapper<FileNode> wrapper, Long parentId) {
+        return parentId == null
+                ? wrapper.isNull(FileNode::getParentId)
+                : wrapper.eq(FileNode::getParentId, parentId);
+    }
+
+    private void deletePhysicalFilesAfterCommit(List<FileNode> nodes) {
+        List<String> storageKeys = nodes.stream()
+                .filter(node -> "FILE".equals(node.getNodeType()) && node.getStorageKey() != null)
+                .map(FileNode::getStorageKey)
+                .toList();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                storageKeys.forEach(storageService::delete);
+            }
+        });
     }
 
 

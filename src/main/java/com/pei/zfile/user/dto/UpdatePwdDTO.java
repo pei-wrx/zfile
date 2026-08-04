@@ -11,6 +11,6 @@ public class UpdatePwdDTO {
     private String currentPassword;
 
     @NotBlank(message = "新密码不能为空")
-    @Size(min = 6, max = 128, message = "密码长度需在6-128位之间")
+    @Size(min = 8, max = 72, message = "密码长度需在8-72位之间")
     private String newPassword;
 }

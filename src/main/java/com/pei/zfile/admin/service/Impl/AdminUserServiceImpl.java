@@ -16,6 +16,9 @@ import com.pei.zfile.user.entity.User;
 import com.pei.zfile.user.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.data.redis.core.StringRedisTemplate;
+
+import static com.pei.zfile.common.util.RedisConstant.REFRESH_TOKEN_KEY;
 
 import java.util.List;
 
@@ -25,6 +28,8 @@ public class AdminUserServiceImpl implements AdminUserService {
     private StorageService storageService;
     @Autowired
     private UserMapper userMapper;
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
 
     @Override
@@ -40,8 +45,10 @@ public class AdminUserServiceImpl implements AdminUserService {
                         User::getRole, User::getStatus,
                         User::getQuotaBytes, User::getUsedBytes,
                         User::getCreatedAt, User::getUpdatedAt)
-                .like(request.getKeyword() != null, User::getUsername, request.getKeyword())
-                .or(w -> w.like(request.getKeyword() != null, User::getEmail, request.getKeyword()))
+                .and(request.getKeyword() != null, w -> w
+                        .like(User::getUsername, request.getKeyword())
+                        .or()
+                        .like(User::getEmail, request.getKeyword()))
                 .eq(request.getStatus() != null, User::getStatus, request.getStatus());
 
         Page<User> userPage = userMapper.selectPage(page, wrapper);
@@ -71,6 +78,9 @@ public class AdminUserServiceImpl implements AdminUserService {
         }
         user.setStatus(request.getStatus());
         userMapper.updateById(user);
+        if ("DISABLED".equals(request.getStatus())) {
+            stringRedisTemplate.delete(REFRESH_TOKEN_KEY + userId);
+        }
 
         return UserResponse.builder()
                 .id(user.getId())

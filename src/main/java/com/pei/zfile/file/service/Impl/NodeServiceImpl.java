@@ -10,18 +10,32 @@ import com.pei.zfile.file.dto.*;
 import com.pei.zfile.file.entity.FileNode;
 import com.pei.zfile.file.mapper.FileNodeMapper;
 import com.pei.zfile.file.service.NodeService;
+import com.pei.zfile.storage.service.StorageService;
+import com.pei.zfile.user.entity.User;
+import com.pei.zfile.user.mapper.UserMapper;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
+import java.util.HashSet;
 
 @Service
 public class NodeServiceImpl implements NodeService {
 
     @Resource
     private FileNodeMapper fileNodeMapper;
+
+    @Resource
+    private UserMapper userMapper;
+
+    @Resource
+    private StorageService storageService;
 
     @Override
     @Transactional
@@ -138,11 +152,11 @@ public class NodeServiceImpl implements NodeService {
             throw new BusinessException(ResultCode.FILE_NOT_FOUND);
         }
         boolean exists = fileNodeMapper.exists(
-                new LambdaQueryWrapper<FileNode>()
+                matchParent(new LambdaQueryWrapper<FileNode>()
                         .eq(FileNode::getOwnerId, userId)
-                        .eq(FileNode::getParentId, node.getParentId())
                         .eq(FileNode::getName, name)
                         .eq(FileNode::getStatus, "ACTIVE")
+                        .ne(FileNode::getId, nodeId), node.getParentId())
         );
         if (exists) {
             throw new BusinessException(ResultCode.FILE_NAME_CONFLICT);
@@ -213,6 +227,9 @@ public class NodeServiceImpl implements NodeService {
     @Override
     @Transactional
     public void batchTrashNode(Long userId, List<Long> nodeIds) {
+        if (new HashSet<>(nodeIds).size() != nodeIds.size()) {
+            throw new BusinessException(ResultCode.VALIDATION_ERROR, "节点不能重复");
+        }
         for (Long nodeId : nodeIds) {
             doTrashNode(userId, nodeId);
         }
@@ -236,12 +253,11 @@ public class NodeServiceImpl implements NodeService {
 
         String name = node.getName();
         boolean nameConflict = fileNodeMapper.exists(
-                new LambdaQueryWrapper<FileNode>()
+                matchParent(new LambdaQueryWrapper<FileNode>()
                         .eq(FileNode::getOwnerId, userId)
-                        .eq(FileNode::getParentId, targetParentId)
                         .eq(FileNode::getName, name)
                         .eq(FileNode::getStatus, "ACTIVE")
-                        .ne(FileNode::getId, nodeId)
+                        .ne(FileNode::getId, nodeId), targetParentId)
         );
         if (nameConflict) {
             if ("RENAME".equals(request.getConflictPolicy())) {
@@ -260,32 +276,92 @@ public class NodeServiceImpl implements NodeService {
     @Override
     @Transactional
     public List<NodeResponse> copyNodes(Long userId, CopyNodesRequest request) {
+        if (new HashSet<>(request.getNodeIds()).size() != request.getNodeIds().size()) {
+            throw new BusinessException(ResultCode.VALIDATION_ERROR, "复制节点不能重复");
+        }
         Long targetParentId = request.getTargetParentId();
         validateAndCheckTargetParent(targetParentId, null, null, userId);
 
-        List<NodeResponse> copiedNodes = new ArrayList<>();
-        for (Long nodeId : request.getNodeIds()) {
-            FileNode sourceNode = fileNodeMapper.selectOne(
-                    new LambdaQueryWrapper<FileNode>()
-                            .eq(FileNode::getId, nodeId)
-                            .eq(FileNode::getOwnerId, userId)
-                            .eq(FileNode::getStatus, "ACTIVE")
-            );
-            if (sourceNode == null) {
-                throw new BusinessException(ResultCode.FILE_NOT_FOUND);
-            }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(ResultCode.USER_NOT_FOUND);
+        }
+        if (!"ACTIVE".equals(user.getStatus())) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "用户已被禁用");
+        }
 
+        List<FileNode> sourceNodes = new ArrayList<>();
+        long totalBytes = 0L;
+        for (Long nodeId : request.getNodeIds()) {
+            FileNode sourceNode = getActiveOwnedNode(nodeId, userId);
             if ("FOLDER".equals(sourceNode.getNodeType())
                     && targetParentId != null
-                    && isDescendantOf(targetParentId, nodeId, userId)) {
+                    && (targetParentId.equals(nodeId) || isDescendantOf(targetParentId, nodeId, userId))) {
                 throw new BusinessException(ResultCode.INVALID_OPERATION, "不能将文件夹复制到其子目录中");
             }
+            sourceNodes.add(sourceNode);
+            totalBytes = safeAdd(totalBytes, calculateSubtreeSize(sourceNode, userId));
+        }
 
+        long newUsedBytes = safeAdd(user.getUsedBytes(), totalBytes);
+        if (newUsedBytes > user.getQuotaBytes()) {
+            throw new BusinessException(ResultCode.QUOTA_EXCEEDED);
+        }
+
+        List<NodeResponse> copiedNodes = new ArrayList<>();
+        List<String> copiedStorageKeys = new ArrayList<>();
+        registerRollbackCleanup(copiedStorageKeys);
+        for (FileNode sourceNode : sourceNodes) {
             String newName = resolveNameConflict(targetParentId, userId, sourceNode.getName(), request.getConflictPolicy());
-            FileNode copiedNode = deepCopyNode(sourceNode, targetParentId, userId, newName, request.getConflictPolicy());
+            FileNode copiedNode = deepCopyNode(
+                    sourceNode, targetParentId, userId, newName, request.getConflictPolicy(), copiedStorageKeys);
             copiedNodes.add(toNodeResponse(copiedNode));
         }
+
+        int updated = userMapper.updateById(new User()
+                .setId(userId)
+                .setUsedBytes(newUsedBytes)
+                .setVersion(user.getVersion()));
+        if (updated == 0) {
+            throw new BusinessException(ResultCode.INVALID_OPERATION, "存储用量已变化，请重试");
+        }
         return copiedNodes;
+    }
+
+    private FileNode getActiveOwnedNode(Long nodeId, Long userId) {
+        FileNode node = fileNodeMapper.selectOne(
+                new LambdaQueryWrapper<FileNode>()
+                        .eq(FileNode::getId, nodeId)
+                        .eq(FileNode::getOwnerId, userId)
+                        .eq(FileNode::getStatus, "ACTIVE"));
+        if (node == null) {
+            throw new BusinessException(ResultCode.FILE_NOT_FOUND);
+        }
+        return node;
+    }
+
+    private long calculateSubtreeSize(FileNode node, Long userId) {
+        if ("FILE".equals(node.getNodeType())) {
+            return node.getSizeBytes() != null ? node.getSizeBytes() : 0L;
+        }
+        long total = 0L;
+        List<FileNode> children = fileNodeMapper.selectList(
+                new LambdaQueryWrapper<FileNode>()
+                        .eq(FileNode::getParentId, node.getId())
+                        .eq(FileNode::getOwnerId, userId)
+                        .eq(FileNode::getStatus, "ACTIVE"));
+        for (FileNode child : children) {
+            total = safeAdd(total, calculateSubtreeSize(child, userId));
+        }
+        return total;
+    }
+
+    private long safeAdd(long left, long right) {
+        try {
+            return Math.addExact(left, right);
+        } catch (ArithmeticException e) {
+            throw new BusinessException(ResultCode.QUOTA_EXCEEDED);
+        }
     }
 
     private void doTrashNode(Long userId, Long nodeId) {
@@ -299,7 +375,7 @@ public class NodeServiceImpl implements NodeService {
             throw new BusinessException(ResultCode.FILE_NOT_FOUND);
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         markNodeAsTrashed(node, node.getParentId(), now);
 
         if ("FOLDER".equals(node.getNodeType())) {
@@ -375,11 +451,10 @@ public class NodeServiceImpl implements NodeService {
 
     private String resolveNameConflict(Long parentId, Long userId, String name, String conflictPolicy) {
         boolean exists = fileNodeMapper.exists(
-                new LambdaQueryWrapper<FileNode>()
+                matchParent(new LambdaQueryWrapper<FileNode>()
                         .eq(FileNode::getOwnerId, userId)
-                        .eq(FileNode::getParentId, parentId)
                         .eq(FileNode::getName, name)
-                        .eq(FileNode::getStatus, "ACTIVE")
+                        .eq(FileNode::getStatus, "ACTIVE"), parentId)
         );
         if (!exists) {
             return name;
@@ -390,7 +465,14 @@ public class NodeServiceImpl implements NodeService {
         throw new BusinessException(ResultCode.FILE_NAME_CONFLICT);
     }
 
-    private FileNode deepCopyNode(FileNode source, Long targetParentId, Long userId, String name, String conflictPolicy) {
+    private FileNode deepCopyNode(FileNode source, Long targetParentId, Long userId, String name,
+                                  String conflictPolicy, List<String> copiedStorageKeys) {
+        String storageKey = null;
+        if ("FILE".equals(source.getNodeType())) {
+            storageKey = UUID.randomUUID().toString().replace("-", "");
+            storageService.copy(source.getStorageKey(), storageKey);
+            copiedStorageKeys.add(storageKey);
+        }
         FileNode copy = new FileNode()
                 .setOwnerId(userId)
                 .setParentId(targetParentId)
@@ -399,7 +481,8 @@ public class NodeServiceImpl implements NodeService {
                 .setSizeBytes(source.getSizeBytes())
                 .setContentType(source.getContentType())
                 .setChecksum(source.getChecksum())
-                .setStatus("ACTIVE");
+                .setStatus("ACTIVE")
+                .setStorageKey(storageKey);
         fileNodeMapper.insert(copy);
 
         if ("FOLDER".equals(source.getNodeType())) {
@@ -411,7 +494,7 @@ public class NodeServiceImpl implements NodeService {
             );
             for (FileNode child : children) {
                 String childName = resolveNameConflict(copy.getId(), userId, child.getName(), conflictPolicy);
-                deepCopyNode(child, copy.getId(), userId, childName, conflictPolicy);
+                deepCopyNode(child, copy.getId(), userId, childName, conflictPolicy, copiedStorageKeys);
             }
         }
         return copy;
@@ -432,14 +515,30 @@ public class NodeServiceImpl implements NodeService {
             newName = baseName + " (" + counter + ")" + extension;
             counter++;
         } while (fileNodeMapper.exists(
-                new LambdaQueryWrapper<FileNode>()
+                matchParent(new LambdaQueryWrapper<FileNode>()
                         .eq(FileNode::getOwnerId, userId)
-                        .eq(FileNode::getParentId, parentId)
                         .eq(FileNode::getName, newName)
-                        .eq(FileNode::getStatus, "ACTIVE")
+                        .eq(FileNode::getStatus, "ACTIVE"), parentId)
         ));
 
         return newName;
+    }
+
+    private LambdaQueryWrapper<FileNode> matchParent(LambdaQueryWrapper<FileNode> wrapper, Long parentId) {
+        return parentId == null
+                ? wrapper.isNull(FileNode::getParentId)
+                : wrapper.eq(FileNode::getParentId, parentId);
+    }
+
+    private void registerRollbackCleanup(List<String> storageKeys) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    storageKeys.forEach(storageService::delete);
+                }
+            }
+        });
     }
 
     private NodeResponse toNodeResponse(FileNode node) {

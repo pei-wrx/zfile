@@ -24,7 +24,7 @@ public interface ShareService {
 
     PublicShareResponse getPublicShareDetail(String shareCode);
 
-    ShareVerifyResponse verifySharePassword(String shareCode, @Valid ShareVerifyRequest request);
+    ShareVerifyResponse verifySharePassword(String shareCode, @Valid ShareVerifyRequest request, String clientIp);
 
     List<NodeResponse> browseShareNodes(String shareCode, Long parentId, String shareToken);
 

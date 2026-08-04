@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -23,7 +24,7 @@ public class PublicShareResponse {
 
     private Boolean hasPassword;
 
-    private LocalDateTime expiresAt;
+    private Instant expiresAt;
 
     private Integer downloadLimit;
 

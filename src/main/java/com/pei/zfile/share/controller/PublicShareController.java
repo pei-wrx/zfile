@@ -39,8 +39,10 @@ public class PublicShareController {
      */
     @PostMapping("/{shareCode}/verify")
     public Result<ShareVerifyResponse> verifyShareCode(@PathVariable String shareCode,
-                                                        @RequestBody @Valid ShareVerifyRequest request) {
-        ShareVerifyResponse verifyResponse = shareService.verifySharePassword(shareCode, request);
+                                                        @RequestBody @Valid ShareVerifyRequest request,
+                                                        HttpServletRequest httpRequest) {
+        ShareVerifyResponse verifyResponse = shareService.verifySharePassword(
+                shareCode, request, httpRequest.getRemoteAddr());
         return Result.success(verifyResponse);
     }
     /**

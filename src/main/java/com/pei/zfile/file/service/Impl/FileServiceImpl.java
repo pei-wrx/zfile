@@ -18,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -53,6 +55,7 @@ public class FileServiceImpl implements FileService {
         if (policy == ConflictPolicyEnum.REPLACE) {
             throw new BusinessException(ResultCode.INVALID_OPERATION, "V1 暂不支持 REPLACE 策略，请使用 REJECT 或 RENAME");
         }
+        String resolvedName = resolveNameConflict(request.getParentId(), userId, originalFilename, policy);
 
         StoreResult storeResult;
         try {
@@ -72,9 +75,13 @@ public class FileServiceImpl implements FileService {
         }
 
         String storageKey = UUID.randomUUID().toString().replace("-", "");
-        storageService.commitTemp(storeResult.getTempKey(), storageKey);
-
-        String resolvedName = resolveNameConflict(request.getParentId(), userId, originalFilename, policy);
+        try {
+            storageService.commitTemp(storeResult.getTempKey(), storageKey);
+        } catch (RuntimeException e) {
+            storageService.deleteTemp(storeResult.getTempKey());
+            throw e;
+        }
+        registerRollbackCleanup(storageKey);
 
         FileNode fileNode = new FileNode()
                 .setOwnerId(userId)
@@ -227,8 +234,20 @@ public class FileServiceImpl implements FileService {
                 .name(node.getName())
                 .sizeBytes(node.getSizeBytes())
                 .contentType(node.getContentType())
+                .status(node.getStatus())
                 .createdAt(node.getCreatedAt())
                 .updatedAt(node.getUpdatedAt())
                 .build();
+    }
+
+    private void registerRollbackCleanup(String storageKey) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    storageService.delete(storageKey);
+                }
+            }
+        });
     }
 }

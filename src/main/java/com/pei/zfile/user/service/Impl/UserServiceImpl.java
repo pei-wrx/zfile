@@ -11,6 +11,9 @@ import com.pei.zfile.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.data.redis.core.StringRedisTemplate;
+
+import static com.pei.zfile.common.util.RedisConstant.REFRESH_TOKEN_KEY;
 
 @Service
 public class UserServiceImpl implements UserService {
@@ -18,6 +21,8 @@ public class UserServiceImpl implements UserService {
     private UserMapper userMapper;
     @Autowired
     private PasswordEncoder passwordEncoder;
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public User getById(Long userId) {
@@ -78,5 +83,6 @@ public class UserServiceImpl implements UserService {
         }
         user.setPasswordHash(passwordEncoder.encode(updatePwdDTO.getNewPassword()));
         userMapper.updateById(user);
+        stringRedisTemplate.delete(REFRESH_TOKEN_KEY + userId);
     }
 }

@@ -11,6 +11,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
+import com.pei.zfile.user.entity.User;
+import com.pei.zfile.user.mapper.UserMapper;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -23,11 +25,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final StringRedisTemplate stringRedisTemplate;
+    private final UserMapper userMapper;
 
     public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider,
-                                   StringRedisTemplate stringRedisTemplate) {
+                                   StringRedisTemplate stringRedisTemplate,
+                                   UserMapper userMapper) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.stringRedisTemplate = stringRedisTemplate;
+        this.userMapper = userMapper;
     }
     // 过滤请求
     @Override
@@ -37,19 +42,34 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = extractToken(request);
         if (token != null && jwtTokenProvider.validateToken(token) == JwtTokenProvider.TokenValidationResult.VALID) {
             Claims claims = jwtTokenProvider.parseClaims(token);
+            if (!jwtTokenProvider.hasTokenType(claims, JwtTokenProvider.ACCESS_TOKEN_TYPE)) {
+                filterChain.doFilter(request, response);
+                return;
+            }
             String jti = claims.getId();
             if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(TOKEN_BLACKLIST_PREFIX + jti))) {
                 filterChain.doFilter(request, response);
                 return;
             }
-            String userId = claims.getSubject();
-            String role = claims.get("role", String.class);
+
+            Long userId;
+            try {
+                userId = Long.valueOf(claims.getSubject());
+            } catch (NumberFormatException e) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+            User user = userMapper.selectById(userId);
+            if (user == null || !"ACTIVE".equals(user.getStatus())) {
+                filterChain.doFilter(request, response);
+                return;
+            }
 
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
-                            userId,
+                            userId.toString(),
                             null,
-                            Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role))
+                            Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + user.getRole()))
                     );
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }

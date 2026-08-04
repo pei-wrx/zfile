@@ -6,11 +6,13 @@ import com.pei.zfile.auth.dto.RegisterDTO;
 import com.pei.zfile.auth.dto.TokenResponse;
 import com.pei.zfile.auth.service.AuthService;
 import com.pei.zfile.common.response.Result;
-import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
+import jakarta.servlet.http.HttpServletRequest;
+import com.pei.zfile.user.dto.UserResponse;
 
 @Slf4j
 @RestController
@@ -25,8 +27,9 @@ public class AuthController {
      * @return
      */
     @PostMapping("/login")
-    public Result<TokenResponse> login(@RequestBody @Valid LoginDTO loginDTO) {
-        TokenResponse tokenResponse = authService.login(loginDTO);
+    public Result<TokenResponse> login(@RequestBody @Valid LoginDTO loginDTO,
+                                       HttpServletRequest request) {
+        TokenResponse tokenResponse = authService.login(loginDTO, request.getRemoteAddr());
         return Result.success(tokenResponse);
     }
     /**
@@ -34,9 +37,9 @@ public class AuthController {
      * @return
      */
     @PostMapping("/register")
-    public Result<Void> register(@RequestBody @Valid RegisterDTO registerDTO) {
-        authService.register(registerDTO);
-        return Result.success();
+    @ResponseStatus(HttpStatus.CREATED)
+    public Result<UserResponse> register(@RequestBody @Valid RegisterDTO registerDTO) {
+        return Result.success(authService.register(registerDTO));
     }
     /**
      * 刷新token
@@ -52,10 +55,10 @@ public class AuthController {
      * @return
      */
     @PostMapping("/logout")
-    public Result<Void> logout(@RequestHeader("Authorization") String authHeader) {
-        log.info("进入 logout, authHeader={}", authHeader);
-        String token = authHeader.replace("Bearer ", "");
-        authService.logout(token);
+    public Result<Void> logout(@RequestHeader("Authorization") String authHeader,
+                               @RequestBody @Valid RefreshDTO refreshDTO) {
+        String accessToken = authHeader.substring("Bearer ".length());
+        authService.logout(accessToken, refreshDTO.getRefreshToken());
         return Result.success();
     }
 }

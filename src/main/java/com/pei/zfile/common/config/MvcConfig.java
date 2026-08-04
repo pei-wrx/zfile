@@ -13,7 +13,8 @@ public class MvcConfig implements WebMvcConfigurer {
     public void configurePathMatch(PathMatchConfigurer configurer) {
         //统一路径前缀/api/v1
         configurer.addPathPrefix("/api/v1",
-                c->c.isAnnotationPresent(RestController.class)
+                c -> c.getPackageName().startsWith("com.pei.zfile")
+                        && c.isAnnotationPresent(RestController.class)
                 );
     }
 }

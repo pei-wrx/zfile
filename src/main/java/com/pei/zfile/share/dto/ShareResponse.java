@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -26,7 +27,7 @@ public class ShareResponse {
 
     private Boolean hasPassword;
 
-    private LocalDateTime expiresAt;
+    private Instant expiresAt;
 
     private Integer downloadLimit;
 

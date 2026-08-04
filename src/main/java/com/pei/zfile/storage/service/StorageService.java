@@ -14,5 +14,7 @@ public interface StorageService {
 
     void delete(String storageKey);
 
+    void copy(String sourceStorageKey, String targetStorageKey);
+
     InputStream load(String storageKey);
 }

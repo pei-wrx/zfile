@@ -16,6 +16,12 @@ import java.util.UUID;
 @Component
 public class JwtTokenProvider {
 
+    private static final String TOKEN_TYPE_CLAIM = "tokenType";
+
+    public static final String ACCESS_TOKEN_TYPE = "ACCESS";
+    public static final String REFRESH_TOKEN_TYPE = "REFRESH";
+    public static final String SHARE_TOKEN_TYPE = "SHARE";
+
     private final SecretKey secretKey;
     private final long accessTokenExpiration;
     private final long refreshTokenExpiration;
@@ -33,6 +39,7 @@ public class JwtTokenProvider {
         return Jwts.builder()
                 .id(UUID.randomUUID().toString())
                 .subject(userId.toString())
+                .claim(TOKEN_TYPE_CLAIM, ACCESS_TOKEN_TYPE)
                 .claim("username", username)
                 .claim("role", role)
                 .issuedAt(now)
@@ -46,6 +53,7 @@ public class JwtTokenProvider {
         return Jwts.builder()
                 .id(UUID.randomUUID().toString())
                 .subject(userId.toString())
+                .claim(TOKEN_TYPE_CLAIM, REFRESH_TOKEN_TYPE)
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + refreshTokenExpiration))
                 .signWith(secretKey)
@@ -57,6 +65,7 @@ public class JwtTokenProvider {
         return Jwts.builder()
                 .id(UUID.randomUUID().toString())
                 .subject(shareCode)
+                .claim(TOKEN_TYPE_CLAIM, SHARE_TOKEN_TYPE)
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + 1800_000))
                 .signWith(secretKey)
@@ -77,6 +86,18 @@ public class JwtTokenProvider {
 
     public Claims parseClaims(String token) {
         return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload();
+    }
+
+    public boolean hasTokenType(Claims claims, String expectedType) {
+        return expectedType.equals(claims.get(TOKEN_TYPE_CLAIM, String.class));
+    }
+
+    public long getAccessTokenExpirationSeconds() {
+        return accessTokenExpiration / 1000;
+    }
+
+    public long getRefreshTokenExpirationMillis() {
+        return refreshTokenExpiration;
     }
 
     public enum TokenValidationResult {

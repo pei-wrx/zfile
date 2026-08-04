@@ -20,6 +20,7 @@ import com.pei.zfile.share.mapper.ShareMapper;
 import com.pei.zfile.share.service.ShareService;
 import com.pei.zfile.common.security.JwtTokenProvider;
 import com.pei.zfile.common.security.JwtTokenProvider.TokenValidationResult;
+import com.pei.zfile.common.security.RedisRequestRateLimiter;
 import com.pei.zfile.file.dto.FileResource;
 import com.pei.zfile.file.dto.NodeResponse;
 import com.pei.zfile.storage.service.StorageService;
@@ -32,9 +33,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.InputStream;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Locale;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -69,12 +76,18 @@ public class ShareServiceImpl implements ShareService {
     @Autowired
     private StorageService storageService;
 
+    @Autowired
+    private RedisRequestRateLimiter rateLimiter;
+
     @Value("${z-file.share.base-url:http://localhost:8090}")
     private String shareBaseUrl;
 
     @Override
     @Transactional
     public ShareResponse create(Long userId, CreateShareRequest request) {
+        if (new HashSet<>(request.getNodeIds()).size() != request.getNodeIds().size()) {
+            throw new BusinessException(ResultCode.VALIDATION_ERROR, "分享节点不能重复");
+        }
         List<FileNode> nodes = fileNodeMapper.selectList(
                 new LambdaQueryWrapper<FileNode>()
                         .in(FileNode::getId, request.getNodeIds())
@@ -95,8 +108,8 @@ public class ShareServiceImpl implements ShareService {
                 .setDownloadLimit(request.getDownloadLimit())
                 .setDownloadCount(0)
                 .setStatus("ACTIVE")
-                .setCreatedAt(LocalDateTime.now())
-                .setUpdatedAt(LocalDateTime.now());
+                .setCreatedAt(LocalDateTime.now(ZoneOffset.UTC))
+                .setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
 
         shareMapper.insert(share);
 
@@ -178,7 +191,7 @@ public class ShareServiceImpl implements ShareService {
             throw new BusinessException(ResultCode.SHARE_EXPIRED);
         }
         share.setStatus("CANCELLED");
-        share.setUpdatedAt(LocalDateTime.now());
+        share.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
         shareMapper.updateById(share);
     }
 
@@ -191,17 +204,17 @@ public class ShareServiceImpl implements ShareService {
         if (share == null) {
             throw new BusinessException(ResultCode.SHARE_NOT_FOUND);
         }
-        if ("CANCELLED".equals(share.getStatus())) {
+        if (!"ACTIVE".equals(share.getStatus())) {
             throw new BusinessException(ResultCode.SHARE_EXPIRED);
         }
-        if (share.getExpiresAt() != null && share.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (isExpired(share)) {
             throw new BusinessException(ResultCode.SHARE_EXPIRED);
         }
         return toPublicShareResponse(share);
     }
 
     @Override
-    public ShareVerifyResponse verifySharePassword(String shareCode, ShareVerifyRequest request) {
+    public ShareVerifyResponse verifySharePassword(String shareCode, ShareVerifyRequest request, String clientIp) {
         Share share = shareMapper.selectOne(
                 new LambdaQueryWrapper<Share>()
                         .eq(Share::getShareCode, shareCode)
@@ -209,21 +222,26 @@ public class ShareServiceImpl implements ShareService {
         if (share == null) {
             throw new BusinessException(ResultCode.SHARE_NOT_FOUND);
         }
-        if ("CANCELLED".equals(share.getStatus())) {
+        if (!"ACTIVE".equals(share.getStatus())) {
             throw new BusinessException(ResultCode.SHARE_EXPIRED);
         }
-        if (share.getExpiresAt() != null && share.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (isExpired(share)) {
             throw new BusinessException(ResultCode.SHARE_EXPIRED);
         }
         if (share.getPasswordHash() != null) {
+            String rateLimitKey = rateLimiter.check(
+                    "share-password", clientIp + "|" + shareCode.toLowerCase(Locale.ROOT),
+                    5, Duration.ofMinutes(5));
             if (request.getPassword() == null
                     || !passwordEncoder.matches(request.getPassword(), share.getPasswordHash())) {
                 throw new BusinessException(ResultCode.SHARE_PASSWORD_INVALID);
             }
+            rateLimiter.reset(rateLimitKey);
         }
         String shareToken = jwtTokenProvider.generateShareToken(shareCode);
+        String tokenId = jwtTokenProvider.parseClaims(shareToken).getId();
         stringRedisTemplate.opsForValue()
-                .set(SHARE_TOKEN_KEY + shareCode, shareToken, SHARE_TOKEN_TTL, TimeUnit.SECONDS);
+                .set(SHARE_TOKEN_KEY + tokenId, shareCode, SHARE_TOKEN_TTL, TimeUnit.SECONDS);
         return ShareVerifyResponse.builder()
                 .shareToken(shareToken)
                 .expiresIn(SHARE_TOKEN_TTL)
@@ -254,7 +272,10 @@ public class ShareServiceImpl implements ShareService {
                     .toList();
         }
 
-        getAndValidateParentNode(parentId, share.getOwnerId());
+        FileNode parent = getActiveOwnedNode(parentId, share.getOwnerId());
+        if (!"FOLDER".equals(parent.getNodeType()) || !isNodeWithinShare(share, parent)) {
+            throw new BusinessException(ResultCode.FILE_NOT_FOUND);
+        }
 
         return fileNodeMapper.selectList(
                 new LambdaQueryWrapper<FileNode>()
@@ -282,6 +303,11 @@ public class ShareServiceImpl implements ShareService {
         if (!"FILE".equals(fileNode.getNodeType())) {
             throw new BusinessException(ResultCode.INVALID_OPERATION, "该节点不是文件");
         }
+        if (!isNodeWithinShare(share, fileNode)) {
+            throw new BusinessException(ResultCode.FILE_NOT_FOUND);
+        }
+
+        InputStream inputStream = storageService.load(fileNode.getStorageKey());
 
         if (share.getDownloadLimit() != null) {
             boolean updated = shareMapper.update(null,
@@ -298,11 +324,11 @@ public class ShareServiceImpl implements ShareService {
             shareMapper.update(null,
                     new LambdaUpdateWrapper<Share>()
                             .eq(Share::getId, share.getId())
+                            .eq(Share::getStatus, "ACTIVE")
                             .setSql("download_count = download_count + 1")
             );
         }
 
-        InputStream inputStream = storageService.load(fileNode.getStorageKey());
         return new FileResource(inputStream, fileNode.getContentType(), fileNode.getName(), fileNode.getSizeBytes());
     }
 
@@ -314,10 +340,10 @@ public class ShareServiceImpl implements ShareService {
         if (share == null) {
             throw new BusinessException(ResultCode.SHARE_NOT_FOUND);
         }
-        if ("CANCELLED".equals(share.getStatus())) {
+        if (!"ACTIVE".equals(share.getStatus())) {
             throw new BusinessException(ResultCode.SHARE_EXPIRED);
         }
-        if (share.getExpiresAt() != null && share.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (isExpired(share)) {
             throw new BusinessException(ResultCode.SHARE_EXPIRED);
         }
 
@@ -329,32 +355,65 @@ public class ShareServiceImpl implements ShareService {
             if (validationResult != TokenValidationResult.VALID) {
                 throw new BusinessException(ResultCode.SHARE_PASSWORD_INVALID);
             }
-            String tokenSubject = jwtTokenProvider.parseClaims(shareToken).getSubject();
+            var claims = jwtTokenProvider.parseClaims(shareToken);
+            if (!jwtTokenProvider.hasTokenType(claims, JwtTokenProvider.SHARE_TOKEN_TYPE)) {
+                throw new BusinessException(ResultCode.SHARE_PASSWORD_INVALID);
+            }
+            String tokenSubject = claims.getSubject();
             if (!shareCode.equals(tokenSubject)) {
                 throw new BusinessException(ResultCode.SHARE_PASSWORD_INVALID);
             }
-            String redisToken = stringRedisTemplate.opsForValue().get(SHARE_TOKEN_KEY + shareCode);
-            if (redisToken == null || !redisToken.equals(shareToken)) {
+            String storedShareCode = stringRedisTemplate.opsForValue().get(SHARE_TOKEN_KEY + claims.getId());
+            if (!shareCode.equals(storedShareCode)) {
                 throw new BusinessException(ResultCode.SHARE_PASSWORD_INVALID);
             }
         }
         return share;
     }
 
-    private FileNode getAndValidateParentNode(Long parentId, Long ownerId) {
-        FileNode parent = fileNodeMapper.selectOne(
-                new LambdaQueryWrapper<FileNode>()
-                        .eq(FileNode::getId, parentId)
-                        .eq(FileNode::getOwnerId, ownerId)
-                        .eq(FileNode::getStatus, "ACTIVE")
-        );
-        if (parent == null) {
+    private boolean isExpired(Share share) {
+        return share.getExpiresAt() != null
+                && share.getExpiresAt().isBefore(Instant.now());
+    }
+
+    private FileNode getActiveOwnedNode(Long nodeId, Long ownerId) {
+        FileNode node = fileNodeMapper.selectById(nodeId);
+        if (node == null || !ownerId.equals(node.getOwnerId()) || !"ACTIVE".equals(node.getStatus())) {
             throw new BusinessException(ResultCode.FILE_NOT_FOUND);
         }
-        if (!"FOLDER".equals(parent.getNodeType())) {
-            throw new BusinessException(ResultCode.INVALID_OPERATION, "该节点不是目录");
+        return node;
+    }
+
+    private boolean isNodeWithinShare(Share share, FileNode node) {
+        Set<Long> sharedRootIds = new HashSet<>(shareItemMapper.selectList(
+                        new LambdaQueryWrapper<ShareItem>()
+                                .eq(ShareItem::getShareId, share.getId()))
+                .stream()
+                .map(ShareItem::getNodeId)
+                .toList());
+        if (sharedRootIds.contains(node.getId())) {
+            return true;
         }
-        return parent;
+
+        Set<Long> visited = new HashSet<>();
+        Long parentId = node.getParentId();
+        while (parentId != null && visited.add(parentId)) {
+            if (sharedRootIds.contains(parentId)) {
+                FileNode sharedRoot = fileNodeMapper.selectById(parentId);
+                return sharedRoot != null
+                        && share.getOwnerId().equals(sharedRoot.getOwnerId())
+                        && "ACTIVE".equals(sharedRoot.getStatus())
+                        && "FOLDER".equals(sharedRoot.getNodeType());
+            }
+            FileNode parent = fileNodeMapper.selectById(parentId);
+            if (parent == null
+                    || !share.getOwnerId().equals(parent.getOwnerId())
+                    || !"ACTIVE".equals(parent.getStatus())) {
+                return false;
+            }
+            parentId = parent.getParentId();
+        }
+        return false;
     }
 
     private NodeResponse toNodeResponse(FileNode node) {
