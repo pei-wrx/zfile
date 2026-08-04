@@ -1,0 +1,43 @@
+server:
+  port: 8090
+spring:
+  application:
+    name: z-file
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/z-file?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: root
+    password: 123456
+  jackson:
+    default-property-inclusion: non_null
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: 123456
+      database: 3
+      lettuce:
+        pool:
+          max-active: 10
+          max-idle: 10
+          min-idle: 1
+          time-between-eviction-runs: 10s
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+mybatis-plus:
+  type-aliases-package: com.pei.zfile.**
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+jwt:
+  secret: ${JWT_SECRET:cloudbox-jwt-secret-key-must-be-at-least-256-bits-long}
+  access-token-expiration: 1800000
+  refresh-token-expiration: 604800000
+z-file:
+  storage:
+    local-path: ./storage
+logging:
+  level:
+    com.pei: debug
