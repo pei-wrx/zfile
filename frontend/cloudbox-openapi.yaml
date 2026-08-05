@@ -1,0 +1,1618 @@
+openapi: 3.0.3
+info:
+  title: CloudBox API
+  version: 1.0.0
+  description: 私有文件管理与分享系统 V1 REST API。
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+tags:
+  - name: Auth
+  - name: Users
+  - name: Nodes
+  - name: Files
+  - name: Trash
+  - name: Shares
+  - name: Public Shares
+  - name: Admin
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: 注册用户
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: 登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshToken
+      summary: 刷新令牌
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: 刷新成功，同时轮换 Refresh Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: 退出登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessNoData'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me:
+    get:
+      tags: [Users]
+      operationId: getCurrentUser
+      summary: 获取当前用户
+      responses:
+        '200':
+          description: 当前用户
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Users]
+      operationId: updateCurrentUser
+      summary: 修改当前用户资料
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: 修改后的用户
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /users/me/password:
+    put:
+      tags: [Users]
+      operationId: changePassword
+      summary: 修改密码
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: 修改成功，服务端应吊销该用户所有 Refresh Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseVoid'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/storage:
+    get:
+      tags: [Users]
+      operationId: getStorageUsage
+      summary: 获取存储用量
+      responses:
+        '200':
+          description: 存储用量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageUsageResponse'
+
+  /nodes:
+    get:
+      tags: [Nodes]
+      operationId: listNodes
+      summary: 查询目录内容或搜索节点
+      description: 不传 parentId 时查询根目录。传 keyword 时在当前用户全部活动节点中搜索，parentId 将被忽略。
+      parameters:
+        - name: parentId
+          in: query
+          description: 父目录 ID；省略表示根目录
+          schema:
+            type: integer
+            format: int64
+        - name: keyword
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/NodeType'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, size, createdAt, updatedAt]
+            default: name
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: 节点分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePageResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /nodes/{nodeId}:
+    parameters:
+      - $ref: '#/components/parameters/NodeId'
+    get:
+      tags: [Nodes]
+      operationId: getNode
+      summary: 获取节点详情
+      responses:
+        '200':
+          description: 节点详情和面包屑
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Nodes]
+      operationId: renameNode
+      summary: 重命名节点
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameNodeRequest'
+      responses:
+        '200':
+          description: 重命名后的节点
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Nodes]
+      operationId: trashNode
+      summary: 将节点移入回收站
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessNoData'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /nodes/{nodeId}/move:
+    post:
+      tags: [Nodes]
+      operationId: moveNode
+      summary: 移动节点
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveNodeRequest'
+      responses:
+        '200':
+          description: 移动后的节点
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /nodes/copy:
+    post:
+      tags: [Nodes]
+      operationId: copyNodes
+      summary: 批量复制节点
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CopyNodesRequest'
+      responses:
+        '200':
+          description: 复制后的顶层节点
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeListResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /nodes/batch-delete:
+    post:
+      tags: [Nodes]
+      operationId: batchTrashNodes
+      summary: 批量移入回收站
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeIdsRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessNoData'
+
+  /folders:
+    post:
+      tags: [Nodes]
+      operationId: createFolder
+      summary: 新建目录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFolderRequest'
+      responses:
+        '201':
+          description: 新目录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /files/upload:
+    post:
+      tags: [Files]
+      operationId: uploadFile
+      summary: 上传单个文件
+      description: 文件大小上限由服务端配置，V1 建议 100 MiB。服务端必须流式写入。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                parentId:
+                  type: integer
+                  format: int64
+                  description: 省略表示根目录
+                conflictPolicy:
+                  $ref: '#/components/schemas/ConflictPolicy'
+                file:
+                  type: string
+                  format: binary
+            encoding:
+              file:
+                contentType: application/octet-stream
+      responses:
+        '201':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          description: 文件过大
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /files/{fileId}/content:
+    get:
+      tags: [Files]
+      operationId: downloadFile
+      summary: 下载文件
+      description: 支持 Range 请求。完整响应为 200，范围响应为 206。
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+        - name: Range
+          in: header
+          schema:
+            type: string
+          example: bytes=0-1048575
+      responses:
+        '200':
+          description: 完整文件
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+            Accept-Ranges:
+              schema:
+                type: string
+                example: bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: 部分文件
+          headers:
+            Content-Range:
+              required: true
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /files/{fileId}/preview:
+    get:
+      tags: [Files]
+      operationId: previewFile
+      summary: 内联预览文件
+      description: V1 仅允许浏览器安全展示的图片、纯文本和 PDF；其他类型返回 415。
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '200':
+          description: 内联文件内容，Content-Disposition 为 inline
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '415':
+          description: 不支持预览该文件类型
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trash:
+    get:
+      tags: [Trash]
+      operationId: listTrash
+      summary: 查询回收站根节点
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: 回收站分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePageResponse'
+    delete:
+      tags: [Trash]
+      operationId: emptyTrash
+      summary: 清空当前用户回收站
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessNoData'
+
+  /trash/{nodeId}/restore:
+    post:
+      tags: [Trash]
+      operationId: restoreNode
+      summary: 恢复回收站节点
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestoreNodeRequest'
+      responses:
+        '200':
+          description: 恢复后的节点
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /trash/{nodeId}:
+    delete:
+      tags: [Trash]
+      operationId: permanentlyDeleteNode
+      summary: 彻底删除回收站节点
+      parameters:
+        - $ref: '#/components/parameters/NodeId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessNoData'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /shares:
+    post:
+      tags: [Shares]
+      operationId: createShare
+      summary: 创建分享
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShareRequest'
+      responses:
+        '201':
+          description: 创建的分享
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      tags: [Shares]
+      operationId: listMyShares
+      summary: 查询我的分享
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ShareStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: 分享分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharePageResponse'
+
+  /shares/{shareId}:
+    parameters:
+      - $ref: '#/components/parameters/ShareId'
+    get:
+      tags: [Shares]
+      operationId: getMyShare
+      summary: 获取自己的分享详情
+      responses:
+        '200':
+          description: 分享详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Shares]
+      operationId: cancelShare
+      summary: 取消分享
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessNoData'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /public/shares/{shareCode}:
+    get:
+      tags: [Public Shares]
+      operationId: getPublicShare
+      summary: 获取分享公开信息
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ShareCode'
+      responses:
+        '200':
+          description: 不包含节点内容的公开信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicShareResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/Gone'
+
+  /public/shares/{shareCode}/verify:
+    post:
+      tags: [Public Shares]
+      operationId: verifySharePassword
+      summary: 验证分享口令
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ShareCode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyShareRequest'
+      responses:
+        '200':
+          description: 验证成功，返回短期 Share Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareTokenResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /public/shares/{shareCode}/nodes:
+    get:
+      tags: [Public Shares]
+      operationId: listPublicShareNodes
+      summary: 浏览分享内容
+      description: 无口令分享可匿名访问；有口令分享必须携带 X-Share-Token。
+      security:
+        - ShareToken: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/ShareCode'
+        - name: parentId
+          in: query
+          description: 只能是本次分享根节点或其后代目录；省略时返回分享根节点
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 分享节点列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeListResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '410':
+          $ref: '#/components/responses/Gone'
+
+  /public/shares/{shareCode}/files/{fileId}/content:
+    get:
+      tags: [Public Shares]
+      operationId: downloadPublicSharedFile
+      summary: 下载分享中的文件
+      security:
+        - ShareToken: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/ShareCode'
+        - $ref: '#/components/parameters/FileId'
+        - name: Range
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 完整文件
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: 部分文件
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '410':
+          $ref: '#/components/responses/Gone'
+
+  /public/shares/{shareCode}/files/{fileId}/preview:
+    get:
+      tags: [Public Shares]
+      operationId: previewPublicSharedFile
+      summary: 内联预览分享中的文件
+      description: 预览不会增加分享下载次数，仅支持可安全内联展示的文件类型。
+      security:
+        - ShareToken: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/ShareCode'
+        - $ref: '#/components/parameters/FileId'
+        - name: Range
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 内联文件内容，Content-Disposition 为 inline
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+            text/plain:
+              schema:
+                type: string
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: 部分内联文件内容
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '410':
+          $ref: '#/components/responses/Gone'
+        '415':
+          description: 不支持预览该文件类型
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      operationId: listUsers
+      summary: 分页查询用户
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: keyword
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/UserStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: 用户分页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPageResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/users/{userId}/status:
+    patch:
+      tags: [Admin]
+      operationId: updateUserStatus
+      summary: 启用或禁用用户
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserStatusRequest'
+      responses:
+        '200':
+          description: 更新后的用户
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users/{userId}/quota:
+    patch:
+      tags: [Admin]
+      operationId: updateUserQuota
+      summary: 调整用户存储配额
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateQuotaRequest'
+      responses:
+        '200':
+          description: 更新后的存储用量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageUsageResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ShareToken:
+      type: apiKey
+      in: header
+      name: X-Share-Token
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Size:
+      name: size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    NodeId:
+      name: nodeId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    FileId:
+      name: fileId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    ShareId:
+      name: shareId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    ShareCode:
+      name: shareCode
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 6
+        maxLength: 32
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+  responses:
+    SuccessNoData:
+      description: 操作成功
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiResponseVoid'
+    BadRequest:
+      description: 请求参数或操作不合法
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: 未认证或凭据无效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: 无权限访问
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: 资源状态或名称冲突
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Gone:
+      description: 分享已过期、取消或达到下载上限
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: 存储配额不足
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: 请求过于频繁
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+          pattern: '^[A-Za-z0-9_]{4,32}$'
+          example: alice_01
+        email:
+          type: string
+          format: email
+          maxLength: 128
+          example: alice@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          example: StrongPass123!
+
+    LoginRequest:
+      type: object
+      required: [account, password]
+      properties:
+        account:
+          type: string
+          description: 用户名或邮箱
+          maxLength: 128
+        password:
+          type: string
+          format: password
+          maxLength: 72
+
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          minLength: 20
+
+    UpdateProfileRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 128
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+          format: password
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+
+    CreateFolderRequest:
+      type: object
+      required: [name]
+      properties:
+        parentId:
+          type: integer
+          format: int64
+          nullable: true
+          description: NULL 或省略表示根目录
+        name:
+          $ref: '#/components/schemas/NodeName'
+
+    RenameNodeRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          $ref: '#/components/schemas/NodeName'
+
+    MoveNodeRequest:
+      type: object
+      required: [conflictPolicy]
+      properties:
+        targetParentId:
+          type: integer
+          format: int64
+          nullable: true
+          description: NULL 表示根目录
+        conflictPolicy:
+          $ref: '#/components/schemas/ConflictPolicy'
+
+    CopyNodesRequest:
+      type: object
+      required: [nodeIds, conflictPolicy]
+      properties:
+        nodeIds:
+          $ref: '#/components/schemas/NodeIds'
+        targetParentId:
+          type: integer
+          format: int64
+          nullable: true
+        conflictPolicy:
+          $ref: '#/components/schemas/ConflictPolicy'
+
+    NodeIdsRequest:
+      type: object
+      required: [nodeIds]
+      properties:
+        nodeIds:
+          $ref: '#/components/schemas/NodeIds'
+
+    RestoreNodeRequest:
+      type: object
+      properties:
+        targetParentId:
+          type: integer
+          format: int64
+          nullable: true
+          description: 省略时尝试恢复到原目录
+        conflictPolicy:
+          $ref: '#/components/schemas/ConflictPolicy'
+
+    CreateShareRequest:
+      type: object
+      required: [nodeIds, title]
+      properties:
+        nodeIds:
+          $ref: '#/components/schemas/NodeIds'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 128
+        password:
+          type: string
+          minLength: 4
+          maxLength: 32
+          nullable: true
+          description: 省略或 NULL 表示无口令
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 必须晚于当前时间；NULL 表示永久
+        downloadLimit:
+          type: integer
+          minimum: 1
+          nullable: true
+
+    VerifyShareRequest:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+          maxLength: 32
+
+    UpdateUserStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/UserStatus'
+
+    UpdateQuotaRequest:
+      type: object
+      required: [quotaBytes]
+      properties:
+        quotaBytes:
+          type: integer
+          format: int64
+          minimum: 0
+
+    NodeName:
+      type: string
+      minLength: 1
+      maxLength: 255
+      pattern: '^(?![.]{1,2}$)(?!.*[\\/:*?"<>|]).+$'
+      description: 不能为 . 或 ..，不能包含 Windows/Linux 保留分隔字符
+
+    NodeIds:
+      type: array
+      minItems: 1
+      maxItems: 100
+      uniqueItems: true
+      items:
+        type: integer
+        format: int64
+        minimum: 1
+
+    ConflictPolicy:
+      type: string
+      enum: [REJECT, RENAME]
+      default: REJECT
+
+    NodeType:
+      type: string
+      enum: [FILE, FOLDER]
+
+    NodeStatus:
+      type: string
+      enum: [ACTIVE, TRASHED]
+
+    UserStatus:
+      type: string
+      enum: [ACTIVE, DISABLED]
+
+    UserRole:
+      type: string
+      enum: [USER, ADMIN]
+
+    ShareStatus:
+      type: string
+      enum: [ACTIVE, CANCELLED, EXPIRED]
+
+    User:
+      type: object
+      required: [id, username, email, role, status, quotaBytes, usedBytes, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        quotaBytes:
+          type: integer
+          format: int64
+        usedBytes:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+
+    TokenData:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          description: Access Token 剩余秒数
+          example: 1800
+        user:
+          $ref: '#/components/schemas/User'
+
+    StorageUsage:
+      type: object
+      required: [quotaBytes, usedBytes, availableBytes, usageRatio]
+      properties:
+        quotaBytes:
+          type: integer
+          format: int64
+        usedBytes:
+          type: integer
+          format: int64
+        availableBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        usageRatio:
+          type: number
+          format: double
+          minimum: 0
+          example: 0.34
+
+    BreadcrumbItem:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+          description: 根目录为 NULL
+        name:
+          type: string
+
+    Node:
+      type: object
+      required: [id, type, name, sizeBytes, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        parentId:
+          type: integer
+          format: int64
+          nullable: true
+        type:
+          $ref: '#/components/schemas/NodeType'
+        name:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
+        contentType:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/NodeStatus'
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    NodeDetail:
+      allOf:
+        - $ref: '#/components/schemas/Node'
+        - type: object
+          required: [breadcrumbs]
+          properties:
+            checksum:
+              type: string
+              nullable: true
+            breadcrumbs:
+              type: array
+              items:
+                $ref: '#/components/schemas/BreadcrumbItem'
+
+    Share:
+      type: object
+      required: [id, shareCode, shareUrl, title, hasPassword, downloadCount, status, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        shareCode:
+          type: string
+        shareUrl:
+          type: string
+          format: uri
+        title:
+          type: string
+        hasPassword:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        downloadLimit:
+          type: integer
+          nullable: true
+        downloadCount:
+          type: integer
+          minimum: 0
+        status:
+          $ref: '#/components/schemas/ShareStatus'
+        nodeIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        createdAt:
+          type: string
+          format: date-time
+
+    PublicShare:
+      type: object
+      required: [shareCode, title, passwordRequired, status]
+      properties:
+        shareCode:
+          type: string
+        title:
+          type: string
+        passwordRequired:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        remainingDownloads:
+          type: integer
+          nullable: true
+          minimum: 0
+        status:
+          $ref: '#/components/schemas/ShareStatus'
+
+    ShareTokenData:
+      type: object
+      required: [shareToken, expiresIn]
+      properties:
+        shareToken:
+          type: string
+        expiresIn:
+          type: integer
+          example: 1800
+
+    PageNode:
+      type: object
+      required: [items, page, size, total, pages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'
+        page:
+          type: integer
+        size:
+          type: integer
+        total:
+          type: integer
+          format: int64
+        pages:
+          type: integer
+
+    PageShare:
+      type: object
+      required: [items, page, size, total, pages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Share'
+        page:
+          type: integer
+        size:
+          type: integer
+        total:
+          type: integer
+          format: int64
+        pages:
+          type: integer
+
+    PageUser:
+      type: object
+      required: [items, page, size, total, pages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        page:
+          type: integer
+        size:
+          type: integer
+        total:
+          type: integer
+          format: int64
+        pages:
+          type: integer
+
+    ApiResponseVoid:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          nullable: true
+          example: null
+
+    UserResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/User'
+
+    TokenResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/TokenData'
+
+    StorageUsageResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/StorageUsage'
+
+    NodeResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/Node'
+
+    NodeDetailResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/NodeDetail'
+
+    NodeListResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'
+
+    NodePageResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/PageNode'
+
+    ShareResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/Share'
+
+    SharePageResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/PageShare'
+
+    PublicShareResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/PublicShare'
+
+    ShareTokenResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/ShareTokenData'
+
+    UserPageResponse:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          $ref: '#/components/schemas/PageUser'
+
+    ErrorDetail:
+      type: object
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+          example: FILE_NAME_CONFLICT
+        message:
+          type: string
+          example: 目标目录中已存在同名文件
+        requestId:
+          type: string
+        errors:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/ErrorDetail'

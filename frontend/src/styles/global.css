@@ -1,0 +1,190 @@
+/* ============================================================
+   CloudBox Design System
+   基于 ui-ux-pro-max skill 规范：颜色 / 排版 / 间距 / 阴影 / 圆角
+   ============================================================ */
+
+:root {
+  /* ---- Brand Color ---- */
+  --cb-primary: #4f7cff;
+  --cb-primary-light: #6b93ff;
+  --cb-primary-dark: #3a5fd9;
+  --cb-primary-bg: #eef2ff;
+  --cb-primary-bg-hover: #e0e7ff;
+
+  /* ---- Accent ---- */
+  --cb-accent: #8b5cf6;
+  --cb-secondary: #0ea5e9;
+  --cb-success: #10b981;
+  --cb-warning: #f59e0b;
+  --cb-danger: #ef4444;
+  --cb-info: #6366f1;
+
+  /* ---- Neutral ---- */
+  --cb-text-primary: #1e293b;
+  --cb-text-regular: #475569;
+  --cb-text-secondary: #64748b;
+  --cb-text-muted: #94a3b8;
+  --cb-border: #e2e8f0;
+  --cb-border-light: #f1f5f9;
+  --cb-border-dark: #cbd5e1;
+  --cb-bg-page: #f8fafc;
+  --cb-bg-card: #ffffff;
+  --cb-bg-hover: #f8fafc;
+  --cb-bg-elevated: #ffffff;
+
+  /* ---- Typography ---- */
+  --cb-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --cb-font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+
+  /* ---- Radius ---- */
+  --cb-radius-sm: 6px;
+  --cb-radius: 10px;
+  --cb-radius-lg: 14px;
+  --cb-radius-xl: 20px;
+
+  /* ---- Shadow ---- */
+  --cb-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --cb-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --cb-shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --cb-shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.05);
+  --cb-shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.05);
+
+  /* ---- Layout ---- */
+  --cb-sidebar-width: 240px;
+  --cb-header-height: 60px;
+}
+
+/* ---- Reset ---- */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: var(--cb-font-sans);
+  background: var(--cb-bg-page);
+  color: var(--cb-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--cb-primary);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+a:hover {
+  color: var(--cb-primary-dark);
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--cb-border-dark);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cb-text-muted);
+}
+
+/* ---- Element Plus Overrides ---- */
+.el-button {
+  border-radius: var(--cb-radius-sm);
+  font-weight: 500;
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--cb-primary);
+  --el-button-border-color: var(--cb-primary);
+  --el-button-hover-bg-color: var(--cb-primary-light);
+  --el-button-hover-border-color: var(--cb-primary-light);
+  --el-button-active-bg-color: var(--cb-primary-dark);
+  --el-button-active-border-color: var(--cb-primary-dark);
+}
+
+.el-card {
+  border-radius: var(--cb-radius-lg);
+  border: 1px solid var(--cb-border-light);
+  box-shadow: var(--cb-shadow-sm);
+}
+
+.el-dialog {
+  border-radius: var(--cb-radius-lg);
+  overflow: hidden;
+}
+
+.el-table {
+  --el-table-border-color: var(--cb-border-light);
+  --el-table-header-bg-color: var(--cb-bg-page);
+  --el-table-row-hover-bg-color: var(--cb-primary-bg);
+}
+
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select .el-input__wrapper {
+  border-radius: var(--cb-radius-sm) !important;
+}
+
+.el-menu {
+  border-right: none !important;
+}
+
+.el-pagination.is-background .el-pager li:not(.is-disabled).active {
+  background-color: var(--cb-primary);
+}
+
+/* ---- Animation ---- */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+/* ---- Utility ---- */
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---- Page transition ---- */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
