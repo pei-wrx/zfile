@@ -30,7 +30,7 @@ import java.util.UUID;
 @Service
 public class FileServiceImpl implements FileService {
 
-    private static final long MAX_FILE_SIZE = 100L * 1024 * 1024;
+    private static final long MAX_FILE_SIZE = 120L * 1024 * 1024;
 
     @Autowired
     private FileNodeMapper fileNodeMapper;

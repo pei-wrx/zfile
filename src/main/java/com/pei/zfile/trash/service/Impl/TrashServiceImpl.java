@@ -134,12 +134,29 @@ public class TrashServiceImpl implements TrashService {
 
         String name = resolveRestoreNameConflict(targetParentId, userId, node.getName(), nodeId, conflictPolicy);
 
+        int currentVersion = node.getVersion() != null ? node.getVersion() : 0;
         node.setName(name);
         node.setStatus("ACTIVE");
         node.setParentId(targetParentId);
         node.setOriginalParentId(null);
         node.setDeletedAt(null);
-        fileNodeMapper.updateById(node);
+        node.setVersion(currentVersion + 1);
+
+        int updated = fileNodeMapper.update(null,
+                new LambdaUpdateWrapper<FileNode>()
+                        .eq(FileNode::getId, nodeId)
+                        .eq(FileNode::getOwnerId, userId)
+                        .eq(FileNode::getStatus, "TRASHED")
+                        .eq(FileNode::getVersion, currentVersion)
+                        .set(FileNode::getName, name)
+                        .set(FileNode::getStatus, "ACTIVE")
+                        .set(FileNode::getParentId, targetParentId)
+                        .set(FileNode::getOriginalParentId, null)
+                        .set(FileNode::getDeletedAt, null)
+                        .set(FileNode::getVersion, currentVersion + 1));
+        if (updated == 0) {
+            throw new BusinessException(ResultCode.INVALID_OPERATION, "文件状态已发生变化，请重试");
+        }
 
         if ("FOLDER".equals(node.getNodeType())) {
             restoreDescendants(nodeId, userId);
