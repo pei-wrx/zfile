@@ -97,27 +97,26 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="操作" width="180" fixed="right">
+          <el-table-column label="操作" width="180" fixed="right" align="center">
             <template #default="{ row }">
               <div class="row-actions" @click.stop>
                 <el-button
-                  v-if="row.type === 'FILE'"
                   text
                   type="primary"
                   size="small"
-                  @click="handlePreview(row as Node)"
+                  :class="{ 'action-hidden': row.type === 'FOLDER' }"
+                  @click="row.type === 'FILE' && handlePreview(row as Node)"
                 >
                   <el-icon><View /></el-icon>&nbsp;预览
                 </el-button>
                 <el-button
-                  v-if="row.type === 'FILE'"
                   text
                   size="small"
-                  @click="handleDownload(row as Node)"
+                  :class="{ 'action-hidden': row.type === 'FOLDER' }"
+                  @click="row.type === 'FILE' && handleDownload(row as Node)"
                 >
                   <el-icon><Download /></el-icon>&nbsp;下载
                 </el-button>
-                <span v-if="row.type === 'FOLDER'" class="cell-muted">点击进入</span>
               </div>
             </template>
           </el-table-column>
@@ -142,6 +141,16 @@
         <img v-if="previewType === 'image'" :src="previewUrl" :alt="previewNode?.name" class="preview-image" />
         <pre v-else-if="previewType === 'text'" class="preview-text">{{ previewContent }}</pre>
         <iframe v-else-if="previewType === 'pdf'" :src="previewUrl" class="preview-pdf" />
+        <video
+          v-else-if="previewType === 'video'"
+          :src="previewUrl"
+          :aria-label="previewNode?.name"
+          class="preview-video"
+          controls
+          preload="metadata"
+          playsinline
+          @error="handleVideoError"
+        />
         <div v-else-if="previewType === 'unsupported'" class="preview-unsupported">
           <el-icon :size="64" color="var(--cb-text-muted)"><WarningFilled /></el-icon>
           <p>不支持预览此文件类型</p>
@@ -160,6 +169,7 @@ import { Loading, CircleCloseFilled, Lock, Share, Download, View, WarningFilled 
 import { publicShareApi, downloadBlob } from '@/api'
 import { getShareToken, setShareToken, clearShareToken } from '@/api/request'
 import { formatFileSize, formatTime } from '@/utils/format'
+import { detectPreviewType, type PreviewType } from '@/utils/preview'
 import FileIcon from '@/components/FileIcon.vue'
 import type { PublicShare, Node, BreadcrumbItem } from '@/types'
 
@@ -186,7 +196,7 @@ const showPreview = ref(false)
 const previewNode = ref<Node | null>(null)
 const previewUrl = ref('')
 const previewContent = ref('')
-const previewType = ref<'image' | 'text' | 'pdf' | 'unsupported'>('unsupported')
+const previewType = ref<PreviewType>('unsupported')
 const previewLoading = ref(false)
 
 onMounted(() => {
@@ -329,20 +339,6 @@ async function handleDownload(node: Node) {
 
 // ============ 预览 ============
 
-/** 根据 MIME 类型和文件扩展名判断预览类型 */
-function detectPreviewType(node: Node): 'image' | 'text' | 'pdf' | 'unsupported' {
-  const mime = node.contentType || ''
-  if (mime.startsWith('image/')) return 'image'
-  if (mime === 'text/plain' || mime.startsWith('text/') || mime === 'application/json' || mime === 'application/xml') return 'text'
-  if (mime === 'application/pdf') return 'pdf'
-  // MIME 缺失时按扩展名推断
-  const ext = node.name.split('.').pop()?.toLowerCase() || ''
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext)) return 'image'
-  if (['txt', 'md', 'json', 'xml', 'yaml', 'yml', 'csv', 'log', 'js', 'ts', 'vue', 'py', 'java', 'go', 'html', 'css', 'sql'].includes(ext)) return 'text'
-  if (ext === 'pdf') return 'pdf'
-  return 'unsupported'
-}
-
 async function handlePreview(node: Node) {
   previewNode.value = node
   previewLoading.value = true
@@ -357,7 +353,7 @@ async function handlePreview(node: Node) {
   try {
     // 使用专用预览接口（不计入下载次数）
     const blobUrl = await publicShareApi.previewFile(shareCode, node.id)
-    if (previewType.value === 'image' || previewType.value === 'pdf') {
+    if (previewType.value === 'image' || previewType.value === 'pdf' || previewType.value === 'video') {
       // 释放旧的 Object URL 防止内存泄漏
       if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
       previewUrl.value = blobUrl
@@ -372,6 +368,15 @@ async function handlePreview(node: Node) {
     previewType.value = 'unsupported'
   } finally {
     previewLoading.value = false
+  }
+}
+
+function handleVideoError() {
+  ElMessage.warning('当前浏览器无法播放此视频编码，请下载后查看')
+  previewType.value = 'unsupported'
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+    previewUrl.value = ''
   }
 }
 
@@ -545,7 +550,13 @@ function onPreviewClose() {
 .row-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+}
+
+.action-hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .cell-muted {
@@ -599,6 +610,14 @@ function onPreviewClose() {
   width: 100%;
   height: 75vh;
   border: none;
+}
+
+.preview-video {
+  display: block;
+  width: 100%;
+  max-height: 75vh;
+  border-radius: var(--cb-radius);
+  background: #000;
 }
 
 .preview-unsupported {

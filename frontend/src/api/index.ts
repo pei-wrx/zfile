@@ -196,6 +196,7 @@ export const fileApi = {
   async previewFile(fileId: number): Promise<string> {
     const res = await http.get(`/files/${fileId}/preview`, {
       responseType: 'blob',
+      timeout: 600000,
     })
     return URL.createObjectURL(res.data as Blob)
   },
@@ -276,7 +277,7 @@ export const publicShareApi = {
   ): Promise<string> {
     const res = await http.get(
       `/public/shares/${shareCode}/files/${fileId}/preview`,
-      { responseType: 'blob' },
+      { responseType: 'blob', timeout: 600000 },
     )
     return URL.createObjectURL(res.data as Blob)
   },

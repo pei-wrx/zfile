@@ -14,6 +14,7 @@ import java.io.InputStream;
 import java.io.FilterInputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
 public final class FileDownloadHelper {
 
@@ -25,14 +26,15 @@ public final class FileDownloadHelper {
                                                                      boolean inline) {
         String rangeHeader = request.getHeader("Range");
         long fileSize = resource.getSizeBytes();
+        String contentType = resolveContentType(resource);
 
-        if (inline && !isPreviewable(resource.getContentType())) {
+        if (inline && !isPreviewable(contentType)) {
             closeQuietly(resource.getInputStream());
             throw new BusinessException(ResultCode.UNSUPPORTED_MEDIA_TYPE);
         }
 
         if (rangeHeader == null) {
-            return fullResponse(resource, inline);
+            return fullResponse(resource, inline, contentType);
         }
 
         RangeInfo range = parseRange(rangeHeader, fileSize);
@@ -51,7 +53,7 @@ public final class FileDownloadHelper {
             inputStream.skipNBytes(range.start);
             InputStreamResource body = new InputStreamResource(new BoundedInputStream(inputStream, contentLength));
             HttpHeaders headers = new HttpHeaders();
-            headers.set(HttpHeaders.CONTENT_TYPE, contentTypeOrDefault(resource.getContentType()));
+            headers.set(HttpHeaders.CONTENT_TYPE, contentType);
             headers.set(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength));
             headers.set(HttpHeaders.CONTENT_RANGE, "bytes " + range.start + "-" + range.end + "/" + fileSize);
             headers.set(HttpHeaders.ACCEPT_RANGES, "bytes");
@@ -68,10 +70,12 @@ public final class FileDownloadHelper {
         }
     }
 
-    private static ResponseEntity<InputStreamResource> fullResponse(FileResource resource, boolean inline) {
+    private static ResponseEntity<InputStreamResource> fullResponse(FileResource resource,
+                                                                    boolean inline,
+                                                                    String contentType) {
         InputStreamResource body = new InputStreamResource(resource.getInputStream());
         HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.CONTENT_TYPE, contentTypeOrDefault(resource.getContentType()));
+        headers.set(HttpHeaders.CONTENT_TYPE, contentType);
         headers.set(HttpHeaders.CONTENT_LENGTH, String.valueOf(resource.getSizeBytes()));
         headers.set(HttpHeaders.ACCEPT_RANGES, "bytes");
         setContentDisposition(headers, resource.getFileName(), inline);
@@ -86,8 +90,40 @@ public final class FileDownloadHelper {
                 disposition + "; filename=\"" + encodedName + "\"; filename*=UTF-8''" + encodedName);
     }
 
+    private static String resolveContentType(FileResource resource) {
+        String contentType = resource.getContentType();
+        if (contentType != null && !contentType.isBlank()
+                && !contentType.equalsIgnoreCase("application/octet-stream")) {
+            return contentType;
+        }
+
+        String extension = extensionOf(resource.getFileName());
+        return switch (extension) {
+            case "mp4" -> "video/mp4";
+            case "m4v" -> "video/x-m4v";
+            case "webm" -> "video/webm";
+            case "ogv", "ogg" -> "video/ogg";
+            case "mov" -> "video/quicktime";
+            case "avi" -> "video/x-msvideo";
+            case "mkv" -> "video/x-matroska";
+            default -> contentTypeOrDefault(contentType);
+        };
+    }
+
     private static String contentTypeOrDefault(String contentType) {
-        return contentType != null ? contentType : "application/octet-stream";
+        return contentType != null && !contentType.isBlank()
+                ? contentType
+                : "application/octet-stream";
+    }
+
+    private static String extensionOf(String fileName) {
+        if (fileName == null) {
+            return "";
+        }
+        int dot = fileName.lastIndexOf('.');
+        return dot >= 0 && dot < fileName.length() - 1
+                ? fileName.substring(dot + 1).toLowerCase(Locale.ROOT)
+                : "";
     }
 
     private static RangeInfo parseRange(String rangeHeader, long fileSize) {
@@ -146,7 +182,8 @@ public final class FileDownloadHelper {
                 || normalized.equals("image/jpeg")
                 || normalized.equals("image/gif")
                 || normalized.equals("image/webp")
-                || normalized.equals("image/bmp");
+                || normalized.equals("image/bmp")
+                || normalized.startsWith("video/");
     }
 
     private static void setSecurityHeaders(HttpHeaders headers) {

@@ -444,7 +444,7 @@ paths:
       tags: [Files]
       operationId: previewFile
       summary: 内联预览文件
-      description: V1 仅允许浏览器安全展示的图片、纯文本和 PDF；其他类型返回 415。
+      description: V1 仅允许浏览器安全展示的图片、纯文本、PDF 和视频；其他类型返回 415。视频响应支持 Range 请求。
       parameters:
         - $ref: '#/components/parameters/FileId'
       responses:
@@ -459,6 +459,10 @@ paths:
               schema:
                 type: string
             application/pdf:
+              schema:
+                type: string
+                format: binary
+            video/*:
               schema:
                 type: string
                 format: binary
@@ -710,7 +714,7 @@ paths:
       tags: [Public Shares]
       operationId: previewPublicSharedFile
       summary: 内联预览分享中的文件
-      description: 预览不会增加分享下载次数，仅支持可安全内联展示的文件类型。
+      description: 预览不会增加分享下载次数，仅支持可安全内联展示的图片、纯文本、PDF 和视频。视频响应支持 Range 请求。
       security:
         - ShareToken: []
         - {}
@@ -733,6 +737,10 @@ paths:
               schema:
                 type: string
             application/pdf:
+              schema:
+                type: string
+                format: binary
+            video/*:
               schema:
                 type: string
                 format: binary
