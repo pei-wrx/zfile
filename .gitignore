@@ -24,6 +24,7 @@ mvnw
 mvnw.cmd
 .mvn
 package-info.java
+storage
 
 ### NetBeans ###
 /nbproject/private/
