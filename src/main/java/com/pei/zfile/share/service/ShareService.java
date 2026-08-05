@@ -22,11 +22,15 @@ public interface ShareService {
 
     void cancel(Long userId, Long shareId);
 
+    PageResult<PublicShareResponse> listPublicShares(int page, int size);
+
     PublicShareResponse getPublicShareDetail(String shareCode);
 
     ShareVerifyResponse verifySharePassword(String shareCode, @Valid ShareVerifyRequest request, String clientIp);
 
     List<NodeResponse> browseShareNodes(String shareCode, Long parentId, String shareToken);
+
+    FileResource previewShareFile(String shareCode, Long fileId, String shareToken);
 
     FileResource downloadShareFile(String shareCode, Long fileId, String shareToken);
 }

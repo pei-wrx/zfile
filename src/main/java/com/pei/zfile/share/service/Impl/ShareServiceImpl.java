@@ -196,6 +196,30 @@ public class ShareServiceImpl implements ShareService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public PageResult<PublicShareResponse> listPublicShares(int page, int size) {
+        Instant now = Instant.now();
+        LambdaQueryWrapper<Share> wrapper = new LambdaQueryWrapper<Share>()
+                .eq(Share::getStatus, "ACTIVE")
+                .and(expiry -> expiry
+                        .isNull(Share::getExpiresAt)
+                        .or()
+                        .gt(Share::getExpiresAt, now))
+                .and(downloads -> downloads
+                        .isNull(Share::getDownloadLimit)
+                        .or()
+                        .apply("download_count < download_limit"))
+                .orderByDesc(Share::getCreatedAt);
+
+        Page<Share> result = shareMapper.selectPage(new Page<>(page, size), wrapper);
+        List<PublicShareResponse> items = result.getRecords().stream()
+                .map(this::toPublicShareResponse)
+                .toList();
+        return PageResult.of(items, (int) result.getCurrent(), (int) result.getSize(), result.getTotal());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public PublicShareResponse getPublicShareDetail(String shareCode) {
         Share share = shareMapper.selectOne(
                 new LambdaQueryWrapper<Share>()
@@ -288,7 +312,28 @@ public class ShareServiceImpl implements ShareService {
     }
 
     @Override
+    public FileResource previewShareFile(String shareCode, Long fileId, String shareToken) {
+        SharedFileContext context = getSharedFileContext(shareCode, fileId, shareToken);
+        return loadFileResource(context.fileNode());
+    }
+
+    @Override
     public FileResource downloadShareFile(String shareCode, Long fileId, String shareToken) {
+        SharedFileContext context = getSharedFileContext(shareCode, fileId, shareToken);
+        FileResource resource = loadFileResource(context.fileNode());
+        try {
+            incrementDownloadCount(context.share());
+            return resource;
+        } catch (RuntimeException e) {
+            try {
+                resource.getInputStream().close();
+            } catch (Exception ignored) {
+            }
+            throw e;
+        }
+    }
+
+    private SharedFileContext getSharedFileContext(String shareCode, Long fileId, String shareToken) {
         Share share = validateShareAccess(shareCode, shareToken);
 
         FileNode fileNode = fileNodeMapper.selectOne(
@@ -307,8 +352,15 @@ public class ShareServiceImpl implements ShareService {
             throw new BusinessException(ResultCode.FILE_NOT_FOUND);
         }
 
-        InputStream inputStream = storageService.load(fileNode.getStorageKey());
+        return new SharedFileContext(share, fileNode);
+    }
 
+    private FileResource loadFileResource(FileNode fileNode) {
+        InputStream inputStream = storageService.load(fileNode.getStorageKey());
+        return new FileResource(inputStream, fileNode.getContentType(), fileNode.getName(), fileNode.getSizeBytes());
+    }
+
+    private void incrementDownloadCount(Share share) {
         if (share.getDownloadLimit() != null) {
             boolean updated = shareMapper.update(null,
                     new LambdaUpdateWrapper<Share>()
@@ -328,8 +380,6 @@ public class ShareServiceImpl implements ShareService {
                             .setSql("download_count = download_count + 1")
             );
         }
-
-        return new FileResource(inputStream, fileNode.getContentType(), fileNode.getName(), fileNode.getSizeBytes());
     }
 
     private Share validateShareAccess(String shareCode, String shareToken) {
@@ -436,7 +486,7 @@ public class ShareServiceImpl implements ShareService {
                 .shareCode(share.getShareCode())
                 .shareUrl(buildShareUrl(share.getShareCode()))
                 .title(share.getTitle())
-                .hasPassword(share.getPasswordHash() != null)
+                .passwordRequired(share.getPasswordHash() != null)
                 .expiresAt(share.getExpiresAt())
                 .downloadLimit(share.getDownloadLimit())
                 .downloadCount(share.getDownloadCount())
@@ -474,5 +524,8 @@ public class ShareServiceImpl implements ShareService {
             sb.append(SHARE_CODE_CHARS.charAt(SECURE_RANDOM.nextInt(SHARE_CODE_CHARS.length())));
         }
         return sb.toString();
+    }
+
+    private record SharedFileContext(Share share, FileNode fileNode) {
     }
 }

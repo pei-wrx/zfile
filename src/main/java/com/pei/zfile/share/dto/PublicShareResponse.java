@@ -1,5 +1,6 @@
 package com.pei.zfile.share.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,7 +23,15 @@ public class PublicShareResponse {
 
     private String title;
 
-    private Boolean hasPassword;
+    private Boolean passwordRequired;
+
+    /**
+     * Backward-compatible response alias for clients using the old field name.
+     */
+    @JsonProperty("hasPassword")
+    public Boolean getHasPassword() {
+        return passwordRequired;
+    }
 
     private Instant expiresAt;
 

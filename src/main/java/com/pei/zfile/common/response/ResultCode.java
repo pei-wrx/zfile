@@ -17,7 +17,7 @@ public enum ResultCode {
 
     // 403
     FORBIDDEN("FORBIDDEN", "无权限访问资源"),
-    SHARE_PASSWORD_REQUIRED("SHARE_PASSWORD_REQUIRED", "分享需要口令"),
+    SHARE_PASSWORD_REQUIRED("SHARE_PASSWORD_REQUIRED", "查看分享需要口令"),
     SHARE_PASSWORD_INVALID("SHARE_PASSWORD_INVALID", "分享口令错误"),
 
     // 404
