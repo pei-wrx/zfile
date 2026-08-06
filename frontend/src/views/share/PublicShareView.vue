@@ -138,11 +138,11 @@
       @close="onPreviewClose"
     >
       <div class="preview-container" v-loading="previewLoading">
-        <img v-if="previewType === 'image'" :src="previewUrl" :alt="previewNode?.name" class="preview-image" />
+        <img v-if="previewType === 'image' && previewUrl" :src="previewUrl" :alt="previewNode?.name" class="preview-image" />
         <pre v-else-if="previewType === 'text'" class="preview-text">{{ previewContent }}</pre>
-        <iframe v-else-if="previewType === 'pdf'" :src="previewUrl" class="preview-pdf" />
+        <iframe v-else-if="previewType === 'pdf' && previewUrl" :src="previewUrl" class="preview-pdf" />
         <video
-          v-else-if="previewType === 'video'"
+          v-else-if="previewType === 'video' && previewUrl"
           :src="previewUrl"
           :aria-label="previewNode?.name"
           class="preview-video"
@@ -198,6 +198,7 @@ const previewUrl = ref('')
 const previewContent = ref('')
 const previewType = ref<PreviewType>('unsupported')
 const previewLoading = ref(false)
+let previewRequestId = 0
 
 onMounted(() => {
   fetchShareInfo()
@@ -340,10 +341,16 @@ async function handleDownload(node: Node) {
 // ============ 预览 ============
 
 async function handlePreview(node: Node) {
+  const requestId = ++previewRequestId
   previewNode.value = node
   previewLoading.value = true
   showPreview.value = true
   previewType.value = detectPreviewType(node)
+  previewContent.value = ''
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+    previewUrl.value = ''
+  }
 
   if (previewType.value === 'unsupported') {
     previewLoading.value = false
@@ -353,25 +360,31 @@ async function handlePreview(node: Node) {
   try {
     // 使用专用预览接口（不计入下载次数）
     const blobUrl = await publicShareApi.previewFile(shareCode, node.id)
+    if (requestId !== previewRequestId || !showPreview.value) {
+      URL.revokeObjectURL(blobUrl)
+      return
+    }
     if (previewType.value === 'image' || previewType.value === 'pdf' || previewType.value === 'video') {
-      // 释放旧的 Object URL 防止内存泄漏
-      if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
       previewUrl.value = blobUrl
     } else if (previewType.value === 'text') {
       // 预览接口返回的是 Blob URL，需 fetch 取回文本内容
       const resp = await fetch(blobUrl)
-      previewContent.value = await resp.text()
+      const content = await resp.text()
       URL.revokeObjectURL(blobUrl)
+      if (requestId !== previewRequestId || !showPreview.value) return
+      previewContent.value = content
     }
   } catch {
+    if (requestId !== previewRequestId || !showPreview.value) return
     ElMessage.error('预览失败，请尝试下载')
     previewType.value = 'unsupported'
   } finally {
-    previewLoading.value = false
+    if (requestId === previewRequestId) previewLoading.value = false
   }
 }
 
 function handleVideoError() {
+  if (!previewUrl.value) return
   ElMessage.warning('当前浏览器无法播放此视频编码，请下载后查看')
   previewType.value = 'unsupported'
   if (previewUrl.value) {
@@ -382,6 +395,8 @@ function handleVideoError() {
 
 /** 关闭预览对话框时释放 Object URL */
 function onPreviewClose() {
+  previewRequestId++
+  previewLoading.value = false
   if (previewUrl.value) {
     URL.revokeObjectURL(previewUrl.value)
     previewUrl.value = ''

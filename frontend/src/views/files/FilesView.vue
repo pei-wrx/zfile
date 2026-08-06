@@ -316,11 +316,11 @@
     <!-- ============ 预览对话框 ============ -->
     <el-dialog v-model="showPreview" :title="previewNode?.name || '预览'" width="80%" top="5vh" align-center @close="onPreviewClose">
       <div class="preview-container" v-loading="previewLoading">
-        <img v-if="previewType === 'image'" :src="previewUrl" :alt="previewNode?.name" class="preview-image" />
+        <img v-if="previewType === 'image' && previewUrl" :src="previewUrl" :alt="previewNode?.name" class="preview-image" />
         <pre v-else-if="previewType === 'text'" class="preview-text">{{ previewContent }}</pre>
-        <iframe v-else-if="previewType === 'pdf'" :src="previewUrl" class="preview-pdf" />
+        <iframe v-else-if="previewType === 'pdf' && previewUrl" :src="previewUrl" class="preview-pdf" />
         <video
-          v-else-if="previewType === 'video'"
+          v-else-if="previewType === 'video' && previewUrl"
           :src="previewUrl"
           :aria-label="previewNode?.name"
           class="preview-video"
@@ -530,8 +530,10 @@ const previewUrl = ref('')
 const previewContent = ref('')
 const previewType = ref<PreviewType>('unsupported')
 const previewLoading = ref(false)
+let previewRequestId = 0
 
 async function handlePreview(row: Node) {
+  const requestId = ++previewRequestId
   previewNode.value = row
   previewLoading.value = true
   showPreview.value = true
@@ -550,19 +552,28 @@ async function handlePreview(row: Node) {
   try {
     if (previewType.value === 'text') {
       const { blob } = await fileApi.downloadFile(row.id)
-      previewContent.value = await blob.text()
+      const content = await blob.text()
+      if (requestId !== previewRequestId || !showPreview.value) return
+      previewContent.value = content
     } else {
-      previewUrl.value = await fileApi.previewFile(row.id)
+      const blobUrl = await fileApi.previewFile(row.id)
+      if (requestId !== previewRequestId || !showPreview.value) {
+        URL.revokeObjectURL(blobUrl)
+        return
+      }
+      previewUrl.value = blobUrl
     }
   } catch {
+    if (requestId !== previewRequestId || !showPreview.value) return
     ElMessage.error('预览失败')
     previewType.value = 'unsupported'
   } finally {
-    previewLoading.value = false
+    if (requestId === previewRequestId) previewLoading.value = false
   }
 }
 
 function handleVideoError() {
+  if (!previewUrl.value) return
   ElMessage.warning('当前浏览器无法播放此视频编码，请下载后查看')
   previewType.value = 'unsupported'
   if (previewUrl.value) {
@@ -572,6 +583,8 @@ function handleVideoError() {
 }
 
 function onPreviewClose() {
+  previewRequestId++
+  previewLoading.value = false
   if (previewUrl.value) {
     URL.revokeObjectURL(previewUrl.value)
     previewUrl.value = ''
