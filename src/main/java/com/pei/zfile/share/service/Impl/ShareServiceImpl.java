@@ -8,6 +8,8 @@ import com.pei.zfile.common.response.PageResult;
 import com.pei.zfile.common.response.ResultCode;
 import com.pei.zfile.file.entity.FileNode;
 import com.pei.zfile.file.mapper.FileNodeMapper;
+import com.pei.zfile.file.entity.FileObject;
+import com.pei.zfile.file.service.FileObjectService;
 import com.pei.zfile.share.dto.CreateShareRequest;
 import com.pei.zfile.share.dto.PublicShareResponse;
 import com.pei.zfile.share.dto.ShareResponse;
@@ -63,6 +65,9 @@ public class ShareServiceImpl implements ShareService {
 
     @Autowired
     private FileNodeMapper fileNodeMapper;
+
+    @Autowired
+    private FileObjectService fileObjectService;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -356,8 +361,11 @@ public class ShareServiceImpl implements ShareService {
     }
 
     private FileResource loadFileResource(FileNode fileNode) {
-        InputStream inputStream = storageService.load(fileNode.getStorageKey());
-        return new FileResource(inputStream, fileNode.getContentType(), fileNode.getName(), fileNode.getSizeBytes());
+        FileObject fileObject = fileObjectService.getRequired(fileNode.getFileObjectId());
+        InputStream inputStream = storageService.load(fileObject.getStorageKey());
+        String contentType = fileNode.getContentType() != null
+                ? fileNode.getContentType() : fileObject.getContentType();
+        return new FileResource(inputStream, contentType, fileNode.getName(), fileNode.getSizeBytes());
     }
 
     private void incrementDownloadCount(Share share) {

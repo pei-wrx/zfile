@@ -7,6 +7,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MockMvc;
 import com.pei.zfile.file.mapper.FileNodeMapper;
+import com.pei.zfile.file.mapper.FileObjectMapper;
 import com.pei.zfile.audit.mapper.AuditMapper;
 import com.pei.zfile.share.mapper.ShareItemMapper;
 import com.pei.zfile.share.mapper.ShareMapper;
@@ -31,6 +32,9 @@ class ZFileApplicationTests {
 
     @MockitoBean
     private FileNodeMapper fileNodeMapper;
+
+    @MockitoBean
+    private FileObjectMapper fileObjectMapper;
 
     @MockitoBean
     private ShareMapper shareMapper;

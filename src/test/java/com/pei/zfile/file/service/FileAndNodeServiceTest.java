@@ -7,9 +7,11 @@ import com.pei.zfile.file.dto.UploadCheckRequest;
 import com.pei.zfile.file.dto.UploadFileRequest;
 import com.pei.zfile.file.dto.UploadCheckResponse;
 import com.pei.zfile.file.entity.FileNode;
+import com.pei.zfile.file.entity.FileObject;
 import com.pei.zfile.file.mapper.FileNodeMapper;
 import com.pei.zfile.file.service.Impl.FileServiceImpl;
 import com.pei.zfile.file.service.Impl.NodeServiceImpl;
+import com.pei.zfile.file.service.FileObjectService;
 import com.pei.zfile.storage.service.StorageService;
 import com.pei.zfile.storage.model.StoreResult;
 import com.pei.zfile.user.entity.User;
@@ -61,7 +63,8 @@ class FileAndNodeServiceTest {
         FileNodeMapper fileNodeMapper = mock(FileNodeMapper.class);
         UserMapper userMapper = mock(UserMapper.class);
         StorageService storageService = mock(StorageService.class);
-        FileServiceImpl service = service(fileNodeMapper, userMapper, storageService);
+        FileObjectService fileObjectService = mock(FileObjectService.class);
+        FileServiceImpl service = service(fileNodeMapper, userMapper, storageService, fileObjectService);
         FileNode existing = new FileNode()
                 .setId(20L)
                 .setSizeBytes(4L)
@@ -72,7 +75,9 @@ class FileAndNodeServiceTest {
                 .setStatus("ACTIVE");
         when(userMapper.selectById(1L)).thenReturn(activeUser());
         when(fileNodeMapper.exists(any())).thenReturn(false);
-        when(fileNodeMapper.selectOne(any())).thenReturn(existing);
+        when(fileObjectService.findByChecksumAndSize(anyString(), eq(4L))).thenReturn(new FileObject()
+                .setId(20L).setSizeBytes(4L).setContentType("text/plain")
+                .setStorageKey("existing-key").setChecksum("a".repeat(64)));
         when(userMapper.updateById(any(User.class))).thenReturn(1);
 
         UploadCheckRequest request = new UploadCheckRequest()
@@ -86,7 +91,8 @@ class FileAndNodeServiceTest {
             UploadCheckResponse response = service.checkUpload(1L, request);
 
             assertEquals(true, response.isInstantUploaded());
-            verify(storageService).copy(eq("existing-key"), anyString());
+            verify(fileObjectService).retain(20L);
+            verify(storageService, never()).copy(any(), any());
             verify(storageService, never()).storeTemp(any());
             verify(fileNodeMapper).insert(any(FileNode.class));
             verify(userMapper).updateById(any(User.class));
@@ -100,10 +106,11 @@ class FileAndNodeServiceTest {
         FileNodeMapper fileNodeMapper = mock(FileNodeMapper.class);
         UserMapper userMapper = mock(UserMapper.class);
         StorageService storageService = mock(StorageService.class);
-        FileServiceImpl service = service(fileNodeMapper, userMapper, storageService);
+        FileObjectService fileObjectService = mock(FileObjectService.class);
+        FileServiceImpl service = service(fileNodeMapper, userMapper, storageService, fileObjectService);
         when(userMapper.selectById(1L)).thenReturn(activeUser());
         when(fileNodeMapper.exists(any())).thenReturn(false);
-        when(fileNodeMapper.selectOne(any())).thenReturn(null);
+        when(fileObjectService.findByChecksumAndSize(anyString(), eq(4L))).thenReturn(null);
 
         UploadCheckRequest request = new UploadCheckRequest()
                 .setName("new.txt")
@@ -124,7 +131,8 @@ class FileAndNodeServiceTest {
         FileNodeMapper fileNodeMapper = mock(FileNodeMapper.class);
         UserMapper userMapper = mock(UserMapper.class);
         StorageService storageService = mock(StorageService.class);
-        FileServiceImpl service = service(fileNodeMapper, userMapper, storageService);
+        FileObjectService fileObjectService = mock(FileObjectService.class);
+        FileServiceImpl service = service(fileNodeMapper, userMapper, storageService, fileObjectService);
         when(userMapper.selectById(1L)).thenReturn(activeUser());
         when(fileNodeMapper.exists(any())).thenReturn(false);
         when(storageService.storeTemp(any())).thenReturn(new StoreResult(
@@ -149,7 +157,8 @@ class FileAndNodeServiceTest {
         FileNodeMapper fileNodeMapper = mock(FileNodeMapper.class);
         UserMapper userMapper = mock(UserMapper.class);
         StorageService storageService = mock(StorageService.class);
-        FileServiceImpl service = service(fileNodeMapper, userMapper, storageService);
+        FileObjectService fileObjectService = mock(FileObjectService.class);
+        FileServiceImpl service = service(fileNodeMapper, userMapper, storageService, fileObjectService);
         FileNode existing = new FileNode()
                 .setSizeBytes(1L)
                 .setContentType("text/plain")
@@ -159,7 +168,9 @@ class FileAndNodeServiceTest {
                 .setStatus("ACTIVE");
         when(userMapper.selectById(1L)).thenReturn(activeUser());
         when(fileNodeMapper.exists(any())).thenReturn(false);
-        when(fileNodeMapper.selectOne(any())).thenReturn(existing);
+        when(fileObjectService.createOrRetain(any(), eq("text/plain"))).thenReturn(new FileObject()
+                .setId(7L).setSizeBytes(1L).setContentType("text/plain")
+                .setStorageKey("existing-key").setChecksum("a".repeat(64)));
         when(storageService.storeTemp(any())).thenReturn(new StoreResult(
                 "temp-key", "a".repeat(64), 1L));
         when(userMapper.updateById(any(User.class))).thenReturn(1);
@@ -172,7 +183,7 @@ class FileAndNodeServiceTest {
         try {
             service.uploadFile(1L, request);
 
-            verify(storageService).commitTemp(eq("temp-key"), anyString());
+            verify(fileObjectService).createOrRetain(any(), eq("text/plain"));
             verify(storageService, never()).copy(any(), any());
             verify(fileNodeMapper, never()).selectOne(any());
             verify(fileNodeMapper).insert(any(FileNode.class));
@@ -184,10 +195,18 @@ class FileAndNodeServiceTest {
     private FileServiceImpl service(FileNodeMapper fileNodeMapper,
                                     UserMapper userMapper,
                                     StorageService storageService) {
+        return service(fileNodeMapper, userMapper, storageService, mock(FileObjectService.class));
+    }
+
+    private FileServiceImpl service(FileNodeMapper fileNodeMapper,
+                                    UserMapper userMapper,
+                                    StorageService storageService,
+                                    FileObjectService fileObjectService) {
         FileServiceImpl service = new FileServiceImpl();
         ReflectionTestUtils.setField(service, "fileNodeMapper", fileNodeMapper);
         ReflectionTestUtils.setField(service, "userMapper", userMapper);
         ReflectionTestUtils.setField(service, "storageService", storageService);
+        ReflectionTestUtils.setField(service, "fileObjectService", fileObjectService);
         return service;
     }
 
@@ -196,10 +215,11 @@ class FileAndNodeServiceTest {
         FileNodeMapper fileNodeMapper = mock(FileNodeMapper.class);
         UserMapper userMapper = mock(UserMapper.class);
         StorageService storageService = mock(StorageService.class);
+        FileObjectService fileObjectService = mock(FileObjectService.class);
         NodeServiceImpl service = new NodeServiceImpl();
         ReflectionTestUtils.setField(service, "fileNodeMapper", fileNodeMapper);
         ReflectionTestUtils.setField(service, "userMapper", userMapper);
-        ReflectionTestUtils.setField(service, "storageService", storageService);
+        ReflectionTestUtils.setField(service, "fileObjectService", fileObjectService);
         FileNode folder = new FileNode()
                 .setId(10L)
                 .setOwnerId(1L)

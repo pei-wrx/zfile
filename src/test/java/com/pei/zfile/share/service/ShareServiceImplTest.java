@@ -6,6 +6,8 @@ import com.pei.zfile.common.response.PageResult;
 import com.pei.zfile.common.response.ResultCode;
 import com.pei.zfile.file.entity.FileNode;
 import com.pei.zfile.file.mapper.FileNodeMapper;
+import com.pei.zfile.file.entity.FileObject;
+import com.pei.zfile.file.service.FileObjectService;
 import com.pei.zfile.share.entity.Share;
 import com.pei.zfile.share.entity.ShareItem;
 import com.pei.zfile.share.dto.PublicShareResponse;
@@ -39,6 +41,7 @@ class ShareServiceImplTest {
     private ShareItemMapper shareItemMapper;
     private FileNodeMapper fileNodeMapper;
     private StorageService storageService;
+    private FileObjectService fileObjectService;
 
     @BeforeEach
     void setUp() {
@@ -47,10 +50,12 @@ class ShareServiceImplTest {
         shareItemMapper = mock(ShareItemMapper.class);
         fileNodeMapper = mock(FileNodeMapper.class);
         storageService = mock(StorageService.class);
+        fileObjectService = mock(FileObjectService.class);
         ReflectionTestUtils.setField(service, "shareMapper", shareMapper);
         ReflectionTestUtils.setField(service, "shareItemMapper", shareItemMapper);
         ReflectionTestUtils.setField(service, "fileNodeMapper", fileNodeMapper);
         ReflectionTestUtils.setField(service, "storageService", storageService);
+        ReflectionTestUtils.setField(service, "fileObjectService", fileObjectService);
 
         Share share = new Share()
                 .setId(1L)
@@ -91,10 +96,11 @@ class ShareServiceImplTest {
     @Test
     void previewDoesNotIncrementDownloadCount() {
         FileNode sharedFile = activeNode(100L, null, "FILE")
-                .setStorageKey("shared-key")
+                .setFileObjectId(7L)
                 .setName("shared.txt")
                 .setContentType("text/plain");
         when(fileNodeMapper.selectOne(any())).thenReturn(sharedFile);
+        when(fileObjectService.getRequired(7L)).thenReturn(new FileObject().setStorageKey("shared-key"));
         when(storageService.load("shared-key")).thenReturn(new ByteArrayInputStream(new byte[]{1}));
 
         service.previewShareFile("share123", 100L, null);
@@ -105,10 +111,11 @@ class ShareServiceImplTest {
     @Test
     void downloadIncrementsDownloadCountOnce() {
         FileNode sharedFile = activeNode(100L, null, "FILE")
-                .setStorageKey("shared-key")
+                .setFileObjectId(7L)
                 .setName("shared.txt")
                 .setContentType("text/plain");
         when(fileNodeMapper.selectOne(any())).thenReturn(sharedFile);
+        when(fileObjectService.getRequired(7L)).thenReturn(new FileObject().setStorageKey("shared-key"));
         when(storageService.load("shared-key")).thenReturn(new ByteArrayInputStream(new byte[]{1}));
         when(shareMapper.update(any(), any())).thenReturn(1);
 

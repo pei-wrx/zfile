@@ -9,6 +9,8 @@ import com.pei.zfile.common.response.ResultCode;
 import com.pei.zfile.file.dto.NodeResponse;
 import com.pei.zfile.file.entity.FileNode;
 import com.pei.zfile.file.mapper.FileNodeMapper;
+import com.pei.zfile.file.entity.FileObject;
+import com.pei.zfile.file.service.FileObjectService;
 import com.pei.zfile.storage.service.StorageService;
 import com.pei.zfile.trash.dto.RestoreNodeRequest;
 import com.pei.zfile.trash.dto.TrashNodesRequest;
@@ -35,6 +37,9 @@ public class TrashServiceImpl implements TrashService {
 
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private FileObjectService fileObjectService;
 
     @Override
     public PageResult<NodeResponse> selectRootNode(Long userId, TrashNodesRequest request) {
@@ -91,7 +96,7 @@ public class TrashServiceImpl implements TrashService {
         }
 
         deductQuota(userId, releasedBytes);
-        deletePhysicalFilesAfterCommit(trashedNodes);
+        releaseFileObjectsAfterCommit(trashedNodes);
     }
 
     @Override
@@ -190,7 +195,7 @@ public class TrashServiceImpl implements TrashService {
                         .in(FileNode::getId, allNodes.stream().map(FileNode::getId).toList())
         );
         deductQuota(userId, releasedBytes);
-        deletePhysicalFilesAfterCommit(allNodes);
+        releaseFileObjectsAfterCommit(allNodes);
     }
 
     private void restoreDescendants(Long folderId, Long userId) {
@@ -231,7 +236,7 @@ public class TrashServiceImpl implements TrashService {
     private long calculateReleasedBytes(List<FileNode> nodes) {
         long releasedBytes = 0L;
         for (FileNode node : nodes) {
-            if ("FILE".equals(node.getNodeType()) && node.getStorageKey() != null) {
+            if ("FILE".equals(node.getNodeType())) {
                 releasedBytes += node.getSizeBytes() != null ? node.getSizeBytes() : 0L;
             }
         }
@@ -296,15 +301,20 @@ public class TrashServiceImpl implements TrashService {
                 : wrapper.eq(FileNode::getParentId, parentId);
     }
 
-    private void deletePhysicalFilesAfterCommit(List<FileNode> nodes) {
-        List<String> storageKeys = nodes.stream()
-                .filter(node -> "FILE".equals(node.getNodeType()) && node.getStorageKey() != null)
-                .map(FileNode::getStorageKey)
+    private void releaseFileObjectsAfterCommit(List<FileNode> nodes) {
+        List<Long> fileObjectIds = nodes.stream()
+                .filter(node -> "FILE".equals(node.getNodeType()))
+                .map(FileNode::getFileObjectId)
+                .filter(java.util.Objects::nonNull)
                 .toList();
+        List<FileObject> released = fileObjectService.releaseReferences(fileObjectIds);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                storageKeys.forEach(storageService::delete);
+                released.stream()
+                        .map(FileObject::getStorageKey)
+                        .filter(java.util.Objects::nonNull)
+                        .forEach(storageService::delete);
             }
         });
     }

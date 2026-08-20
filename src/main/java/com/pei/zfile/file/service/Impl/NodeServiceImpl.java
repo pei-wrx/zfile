@@ -9,20 +9,18 @@ import com.pei.zfile.common.response.ResultCode;
 import com.pei.zfile.file.dto.*;
 import com.pei.zfile.file.entity.FileNode;
 import com.pei.zfile.file.mapper.FileNodeMapper;
+import com.pei.zfile.file.service.FileObjectService;
+import com.pei.zfile.file.entity.FileObject;
 import com.pei.zfile.file.service.NodeService;
-import com.pei.zfile.storage.service.StorageService;
 import com.pei.zfile.user.entity.User;
 import com.pei.zfile.user.mapper.UserMapper;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.HashSet;
 
 @Service
@@ -35,7 +33,7 @@ public class NodeServiceImpl implements NodeService {
     private UserMapper userMapper;
 
     @Resource
-    private StorageService storageService;
+    private FileObjectService fileObjectService;
 
     @Override
     @Transactional
@@ -309,12 +307,10 @@ public class NodeServiceImpl implements NodeService {
         }
 
         List<NodeResponse> copiedNodes = new ArrayList<>();
-        List<String> copiedStorageKeys = new ArrayList<>();
-        registerRollbackCleanup(copiedStorageKeys);
         for (FileNode sourceNode : sourceNodes) {
             String newName = resolveNameConflict(targetParentId, userId, sourceNode.getName(), request.getConflictPolicy());
             FileNode copiedNode = deepCopyNode(
-                    sourceNode, targetParentId, userId, newName, request.getConflictPolicy(), copiedStorageKeys);
+                    sourceNode, targetParentId, userId, newName, request.getConflictPolicy());
             copiedNodes.add(toNodeResponse(copiedNode));
         }
 
@@ -466,12 +462,13 @@ public class NodeServiceImpl implements NodeService {
     }
 
     private FileNode deepCopyNode(FileNode source, Long targetParentId, Long userId, String name,
-                                  String conflictPolicy, List<String> copiedStorageKeys) {
-        String storageKey = null;
+                                  String conflictPolicy) {
+        Long fileObjectId = null;
+        FileObject fileObject = null;
         if ("FILE".equals(source.getNodeType())) {
-            storageKey = UUID.randomUUID().toString().replace("-", "");
-            storageService.copy(source.getStorageKey(), storageKey);
-            copiedStorageKeys.add(storageKey);
+            fileObjectId = source.getFileObjectId();
+            fileObjectService.retain(fileObjectId);
+            fileObject = fileObjectService.getRequired(fileObjectId);
         }
         FileNode copy = new FileNode()
                 .setOwnerId(userId)
@@ -479,10 +476,11 @@ public class NodeServiceImpl implements NodeService {
                 .setNodeType(source.getNodeType())
                 .setName(name)
                 .setSizeBytes(source.getSizeBytes())
-                .setContentType(source.getContentType())
-                .setChecksum(source.getChecksum())
+                .setFileObjectId(fileObjectId)
+                .setContentType(fileObject != null ? fileObject.getContentType() : source.getContentType())
+                .setChecksum(fileObject != null ? fileObject.getChecksum() : source.getChecksum())
                 .setStatus("ACTIVE")
-                .setStorageKey(storageKey);
+                .setStorageKey(fileObject != null ? fileObject.getStorageKey() : source.getStorageKey());
         fileNodeMapper.insert(copy);
 
         if ("FOLDER".equals(source.getNodeType())) {
@@ -494,7 +492,7 @@ public class NodeServiceImpl implements NodeService {
             );
             for (FileNode child : children) {
                 String childName = resolveNameConflict(copy.getId(), userId, child.getName(), conflictPolicy);
-                deepCopyNode(child, copy.getId(), userId, childName, conflictPolicy, copiedStorageKeys);
+                deepCopyNode(child, copy.getId(), userId, childName, conflictPolicy);
             }
         }
         return copy;
@@ -528,17 +526,6 @@ public class NodeServiceImpl implements NodeService {
         return parentId == null
                 ? wrapper.isNull(FileNode::getParentId)
                 : wrapper.eq(FileNode::getParentId, parentId);
-    }
-
-    private void registerRollbackCleanup(List<String> storageKeys) {
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCompletion(int status) {
-                if (status != STATUS_COMMITTED) {
-                    storageKeys.forEach(storageService::delete);
-                }
-            }
-        });
     }
 
     private NodeResponse toNodeResponse(FileNode node) {

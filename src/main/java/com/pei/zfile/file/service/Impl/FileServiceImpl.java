@@ -10,8 +10,10 @@ import com.pei.zfile.file.dto.UploadFileRequest;
 import com.pei.zfile.file.dto.UploadCheckRequest;
 import com.pei.zfile.file.dto.UploadCheckResponse;
 import com.pei.zfile.file.entity.FileNode;
+import com.pei.zfile.file.entity.FileObject;
 import com.pei.zfile.file.mapper.FileNodeMapper;
 import com.pei.zfile.file.service.FileService;
+import com.pei.zfile.file.service.FileObjectService;
 import com.pei.zfile.storage.model.StoreResult;
 import com.pei.zfile.storage.service.StorageService;
 import com.pei.zfile.user.entity.User;
@@ -20,13 +22,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.UUID;
 import java.util.Locale;
 
 @Slf4j
@@ -43,6 +42,9 @@ public class FileServiceImpl implements FileService {
 
     @Autowired
     private StorageService storageService;
+
+    @Autowired
+    private FileObjectService fileObjectService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -83,44 +85,33 @@ public class FileServiceImpl implements FileService {
             throw new BusinessException(ResultCode.VALIDATION_ERROR, "文件 SHA-256 校验失败");
         }
 
-        String storageKey = UUID.randomUUID().toString().replace("-", "");
-        try {
-            storageService.commitTemp(storeResult.getTempKey(), storageKey);
-        } catch (RuntimeException e) {
-            storageService.deleteTemp(storeResult.getTempKey());
-            throw e;
-        }
-        registerRollbackCleanup(storageKey);
+        FileObject fileObject = fileObjectService.createOrRetain(storeResult, file.getContentType());
 
         FileNode fileNode = new FileNode()
                 .setOwnerId(userId)
                 .setParentId(request.getParentId())
                 .setNodeType("FILE")
                 .setName(resolvedName)
-                .setSizeBytes(storeResult.getSizeBytes())
-                .setContentType(file.getContentType())
-                .setStorageKey(storageKey)
-                .setChecksum(storeResult.getSha256())
+                .setSizeBytes(fileObject.getSizeBytes())
+                .setFileObjectId(fileObject.getId())
+                .setContentType(fileObject.getContentType())
+                .setStorageKey(fileObject.getStorageKey())
+                .setChecksum(fileObject.getChecksum())
                 .setStatus("ACTIVE");
 
-        try {
-            fileNodeMapper.insert(fileNode);
-            int updated = userMapper.updateById(
-                    new User()
-                            .setId(userId)
-                            .setUsedBytes(user.getUsedBytes() + storeResult.getSizeBytes())
-                            .setVersion(user.getVersion())
-            );
-            if (updated == 0) {
-                throw new BusinessException(ResultCode.INTERNAL_ERROR, "用户配额更新失败，请重试");
-            }
-        } catch (Exception e) {
-            storageService.delete(storageKey);
-            throw e;
+        fileNodeMapper.insert(fileNode);
+        int updated = userMapper.updateById(
+                new User()
+                        .setId(userId)
+                        .setUsedBytes(user.getUsedBytes() + fileObject.getSizeBytes())
+                        .setVersion(user.getVersion())
+        );
+        if (updated == 0) {
+            throw new BusinessException(ResultCode.INTERNAL_ERROR, "用户配额更新失败，请重试");
         }
 
         log.info("文件上传成功: userId={}, fileId={}, name={}, sizeBytes={}",
-                userId, fileNode.getId(), resolvedName, storeResult.getSizeBytes());
+                userId, fileNode.getId(), resolvedName, fileObject.getSizeBytes());
         return toNodeResponse(fileNode);
     }
 
@@ -141,44 +132,31 @@ public class FileServiceImpl implements FileService {
             throw new BusinessException(ResultCode.QUOTA_EXCEEDED);
         }
         String sha256 = request.getSha256().toLowerCase(Locale.ROOT);
-        FileNode existing = fileNodeMapper.selectOne(
-                new LambdaQueryWrapper<FileNode>()
-                        .eq(FileNode::getChecksum, sha256)
-                        .eq(FileNode::getStatus, "ACTIVE")
-                        .eq(FileNode::getNodeType, "FILE")
-                        .eq(FileNode::getSizeBytes, request.getSizeBytes())
-                        .last("LIMIT 1")
-        );
-        if (existing == null) {
+        FileObject fileObject = fileObjectService.findByChecksumAndSize(sha256, request.getSizeBytes());
+        if (fileObject == null) {
             return UploadCheckResponse.miss();
         }
 
         String resolvedName = resolveNameConflict(request.getParentId(), userId, request.getName(), policy);
-        String newStorageKey = UUID.randomUUID().toString().replace("-", "");
-        storageService.copy(existing.getStorageKey(), newStorageKey);
-        registerRollbackCleanup(newStorageKey);
+        fileObjectService.retain(fileObject.getId());
         FileNode fileNode = new FileNode()
                 .setOwnerId(userId)
                 .setParentId(request.getParentId())
                 .setNodeType("FILE")
                 .setName(resolvedName)
-                .setSizeBytes(existing.getSizeBytes())
-                .setContentType(existing.getContentType())
-                .setStorageKey(newStorageKey)
-                .setChecksum(existing.getChecksum())
+                .setSizeBytes(fileObject.getSizeBytes())
+                .setFileObjectId(fileObject.getId())
+                .setContentType(fileObject.getContentType())
+                .setStorageKey(fileObject.getStorageKey())
+                .setChecksum(fileObject.getChecksum())
                 .setStatus("ACTIVE");
-        try {
-            fileNodeMapper.insert(fileNode);
-            int updated = userMapper.updateById(new User()
-                    .setId(userId)
-                    .setUsedBytes(user.getUsedBytes() + existing.getSizeBytes())
-                    .setVersion(user.getVersion()));
-            if (updated == 0) {
-                throw new BusinessException(ResultCode.INTERNAL_ERROR, "用户配额更新失败，请重试");
-            }
-        } catch (Exception e) {
-            storageService.delete(newStorageKey);
-            throw e;
+        fileNodeMapper.insert(fileNode);
+        int updated = userMapper.updateById(new User()
+                .setId(userId)
+                .setUsedBytes(user.getUsedBytes() + fileObject.getSizeBytes())
+                .setVersion(user.getVersion()));
+        if (updated == 0) {
+            throw new BusinessException(ResultCode.INTERNAL_ERROR, "用户配额更新失败，请重试");
         }
         log.info("文件秒传成功: userId={}, fileId={}, name={}, checksum={}",
                 userId, fileNode.getId(), resolvedName, sha256);
@@ -188,7 +166,8 @@ public class FileServiceImpl implements FileService {
     @Override
     public FileResource downloadFile(Long userId, Long fileId) {
         FileNode fileNode = getFileNode(userId, fileId);
-        InputStream inputStream = storageService.load(fileNode.getStorageKey());
+        FileObject fileObject = fileObjectService.getRequired(fileNode.getFileObjectId());
+        InputStream inputStream = storageService.load(fileObject.getStorageKey());
         return new FileResource(inputStream, fileNode.getContentType(), fileNode.getName(), fileNode.getSizeBytes());
     }
 
@@ -310,14 +289,4 @@ public class FileServiceImpl implements FileService {
                 .build();
     }
 
-    private void registerRollbackCleanup(String storageKey) {
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCompletion(int status) {
-                if (status != STATUS_COMMITTED) {
-                    storageService.delete(storageKey);
-                }
-            }
-        });
-    }
 }
