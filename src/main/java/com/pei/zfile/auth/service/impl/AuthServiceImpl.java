@@ -1,6 +1,8 @@
 package com.pei.zfile.auth.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.pei.zfile.audit.constant.AuditEnum;
+import com.pei.zfile.audit.service.AuditService;
 import com.pei.zfile.auth.dto.LoginDTO;
 import com.pei.zfile.auth.dto.RefreshDTO;
 import com.pei.zfile.auth.dto.RegisterDTO;
@@ -14,8 +16,10 @@ import com.pei.zfile.user.dto.UserResponse;
 import com.pei.zfile.user.entity.User;
 import com.pei.zfile.user.mapper.UserMapper;
 import io.jsonwebtoken.Claims;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -24,17 +28,22 @@ import org.springframework.dao.DuplicateKeyException;
 import java.util.List;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import static com.pei.zfile.common.util.RedisConstant.*;
+import static org.flywaydb.core.internal.util.JsonUtils.toJson;
+
 
 @Service
 @Slf4j
 public class AuthServiceImpl implements AuthService {
 
-    private static final DefaultRedisScript<Long> ROTATE_REFRESH_TOKEN_SCRIPT = new DefaultRedisScript<>(
-            "if redis.call('get', KEYS[1]) == ARGV[1] then "
-                    + "redis.call('psetex', KEYS[1], ARGV[3], ARGV[2]); return 1 else return 0 end",
-            Long.class);
+    private static final DefaultRedisScript<Long> ROTATE_REFRESH_TOKEN_SCRIPT;
+    static{
+        ROTATE_REFRESH_TOKEN_SCRIPT = new DefaultRedisScript<>();
+        ROTATE_REFRESH_TOKEN_SCRIPT.setLocation(new ClassPathResource("refreshJWT.lua"));
+        ROTATE_REFRESH_TOKEN_SCRIPT.setResultType(Long.class);
+    }
 
     @Autowired
     private UserMapper userMapper;
@@ -46,10 +55,12 @@ public class AuthServiceImpl implements AuthService {
     private StringRedisTemplate stringRedisTemplate;
     @Autowired
     private RedisRequestRateLimiter rateLimiter;
+    @Autowired
+    private AuditService auditService;
 
     private String dummyPasswordHash;
 
-    @jakarta.annotation.PostConstruct
+    @PostConstruct
     void initializeDummyPasswordHash() {
         dummyPasswordHash = passwordEncoder.encode("dummy-password-never-used");
     }
@@ -90,6 +101,9 @@ public class AuthServiceImpl implements AuthService {
         tokenResponse.setRefreshToken(refreshToken);
         tokenResponse.setExpiresIn(jwtTokenProvider.getAccessTokenExpirationSeconds());
         tokenResponse.setUserInfo(new TokenResponse.UserInfo(user.getId(), user.getUsername(), user.getRole()));
+
+        auditService.record(user.getId(), AuditEnum.LOGIN, "USER", user.getId(),toJson(Map.of("role", user.getRole())), clientIp);
+
         return tokenResponse;
     }
 

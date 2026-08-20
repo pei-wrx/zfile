@@ -6,9 +6,12 @@ import com.pei.zfile.admin.dto.UpdateQuotaRequest;
 import com.pei.zfile.admin.dto.UpdateUserStatusRequest;
 import com.pei.zfile.admin.dto.UserPageRequest;
 import com.pei.zfile.admin.service.AdminUserService;
+import com.pei.zfile.audit.constant.AuditEnum;
+import com.pei.zfile.audit.service.AuditService;
 import com.pei.zfile.common.exception.BusinessException;
 import com.pei.zfile.common.response.PageResult;
 import com.pei.zfile.common.response.ResultCode;
+import com.pei.zfile.common.util.IpUtil;
 import com.pei.zfile.storage.service.StorageService;
 import com.pei.zfile.user.dto.StorageResponse;
 import com.pei.zfile.user.dto.UserResponse;
@@ -30,6 +33,8 @@ public class AdminUserServiceImpl implements AdminUserService {
     private UserMapper userMapper;
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+    @Autowired
+    private AuditService auditService;
 
 
     @Override
@@ -81,6 +86,9 @@ public class AdminUserServiceImpl implements AdminUserService {
         if ("DISABLED".equals(request.getStatus())) {
             stringRedisTemplate.delete(REFRESH_TOKEN_KEY + userId);
         }
+
+        String ip = IpUtil.getClientIp();
+        auditService.record(user.getId(), AuditEnum.ADMIN_USER_OPERATION, "ADMIN", user.getId(),null, ip);
 
         return UserResponse.builder()
                 .id(user.getId())
