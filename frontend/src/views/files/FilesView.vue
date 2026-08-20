@@ -394,6 +394,7 @@ import {
 import { nodeApi, fileApi, shareApi, downloadBlob } from '@/api'
 import { formatFileSize, formatTime } from '@/utils/format'
 import { detectPreviewType, type PreviewType } from '@/utils/preview'
+import { sha256File } from '@/utils/sha256'
 import FileIcon from '@/components/FileIcon.vue'
 import type {
   Node, NodeDetail, BreadcrumbItem, SortField, SortDirection,
@@ -615,9 +616,24 @@ async function handleUpload() {
     uploadCurrentName.value = file.name
     uploadProgress.value = 0
     try {
+      uploadCurrentName.value = file.name
+      const sha256 = await sha256File(file)
+      const checked = await fileApi.checkUpload({
+        parentId: currentParentId.value,
+        name: file.name,
+        sizeBytes: file.size,
+        sha256,
+        conflictPolicy: 'RENAME',
+      })
+      if (checked.instantUploaded) {
+        ok++
+        continue
+      }
+      uploadCurrentName.value = file.name
       await fileApi.uploadFile(file, {
         parentId: currentParentId.value,
         conflictPolicy: 'RENAME',
+        sha256,
         onProgress: (p) => { uploadProgress.value = p },
       })
       ok++

@@ -4,6 +4,8 @@ import com.pei.zfile.common.response.Result;
 import com.pei.zfile.file.dto.FileResource;
 import com.pei.zfile.file.dto.NodeResponse;
 import com.pei.zfile.file.dto.UploadFileRequest;
+import com.pei.zfile.file.dto.UploadCheckRequest;
+import com.pei.zfile.file.dto.UploadCheckResponse;
 import com.pei.zfile.file.service.FileService;
 import com.pei.zfile.file.util.FileDownloadHelper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,6 +37,12 @@ public class FileController {
         Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getPrincipal().toString());
         NodeResponse nodeResponse = fileService.uploadFile(userId, request);
         return Result.success(nodeResponse);
+    }
+
+    @PostMapping("/upload/check")
+    public Result<UploadCheckResponse> checkUpload(@Valid @RequestBody UploadCheckRequest request) {
+        Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getPrincipal().toString());
+        return Result.success(fileService.checkUpload(userId, request));
     }
     /**
      * 下载文件，支持 Range 断点续传

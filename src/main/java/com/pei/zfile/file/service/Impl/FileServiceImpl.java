@@ -7,6 +7,8 @@ import com.pei.zfile.file.dto.ConflictPolicyEnum;
 import com.pei.zfile.file.dto.FileResource;
 import com.pei.zfile.file.dto.NodeResponse;
 import com.pei.zfile.file.dto.UploadFileRequest;
+import com.pei.zfile.file.dto.UploadCheckRequest;
+import com.pei.zfile.file.dto.UploadCheckResponse;
 import com.pei.zfile.file.entity.FileNode;
 import com.pei.zfile.file.mapper.FileNodeMapper;
 import com.pei.zfile.file.service.FileService;
@@ -25,6 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.UUID;
+import java.util.Locale;
 
 @Slf4j
 @Service
@@ -57,9 +60,6 @@ public class FileServiceImpl implements FileService {
         }
         String resolvedName = resolveNameConflict(request.getParentId(), userId, originalFilename, policy);
 
-
-
-
         StoreResult storeResult;
         try {
             storeResult = storageService.storeTemp(file.getInputStream());
@@ -75,6 +75,12 @@ public class FileServiceImpl implements FileService {
         if (user.getUsedBytes() + storeResult.getSizeBytes() > user.getQuotaBytes()) {
             storageService.deleteTemp(storeResult.getTempKey());
             throw new BusinessException(ResultCode.QUOTA_EXCEEDED);
+        }
+
+        if (request.getSha256() != null
+                && !request.getSha256().equalsIgnoreCase(storeResult.getSha256())) {
+            storageService.deleteTemp(storeResult.getTempKey());
+            throw new BusinessException(ResultCode.VALIDATION_ERROR, "文件 SHA-256 校验失败");
         }
 
         String storageKey = UUID.randomUUID().toString().replace("-", "");
@@ -116,6 +122,67 @@ public class FileServiceImpl implements FileService {
         log.info("文件上传成功: userId={}, fileId={}, name={}, sizeBytes={}",
                 userId, fileNode.getId(), resolvedName, storeResult.getSizeBytes());
         return toNodeResponse(fileNode);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public UploadCheckResponse checkUpload(Long userId, UploadCheckRequest request) {
+        User user = validateAndGetUser(userId);
+        validateFileName(request.getName());
+        validateParentFolder(request.getParentId(), userId);
+        ConflictPolicyEnum policy = ConflictPolicyEnum.fromValue(request.getConflictPolicy());
+        if (policy == ConflictPolicyEnum.REPLACE) {
+            throw new BusinessException(ResultCode.INVALID_OPERATION, "V1 暂不支持 REPLACE 策略，请使用 REJECT 或 RENAME");
+        }
+        if (request.getSizeBytes() > MAX_FILE_SIZE) {
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE);
+        }
+        if (user.getUsedBytes() + request.getSizeBytes() > user.getQuotaBytes()) {
+            throw new BusinessException(ResultCode.QUOTA_EXCEEDED);
+        }
+        String sha256 = request.getSha256().toLowerCase(Locale.ROOT);
+        FileNode existing = fileNodeMapper.selectOne(
+                new LambdaQueryWrapper<FileNode>()
+                        .eq(FileNode::getChecksum, sha256)
+                        .eq(FileNode::getStatus, "ACTIVE")
+                        .eq(FileNode::getNodeType, "FILE")
+                        .eq(FileNode::getSizeBytes, request.getSizeBytes())
+                        .last("LIMIT 1")
+        );
+        if (existing == null) {
+            return UploadCheckResponse.miss();
+        }
+
+        String resolvedName = resolveNameConflict(request.getParentId(), userId, request.getName(), policy);
+        String newStorageKey = UUID.randomUUID().toString().replace("-", "");
+        storageService.copy(existing.getStorageKey(), newStorageKey);
+        registerRollbackCleanup(newStorageKey);
+        FileNode fileNode = new FileNode()
+                .setOwnerId(userId)
+                .setParentId(request.getParentId())
+                .setNodeType("FILE")
+                .setName(resolvedName)
+                .setSizeBytes(existing.getSizeBytes())
+                .setContentType(existing.getContentType())
+                .setStorageKey(newStorageKey)
+                .setChecksum(existing.getChecksum())
+                .setStatus("ACTIVE");
+        try {
+            fileNodeMapper.insert(fileNode);
+            int updated = userMapper.updateById(new User()
+                    .setId(userId)
+                    .setUsedBytes(user.getUsedBytes() + existing.getSizeBytes())
+                    .setVersion(user.getVersion()));
+            if (updated == 0) {
+                throw new BusinessException(ResultCode.INTERNAL_ERROR, "用户配额更新失败，请重试");
+            }
+        } catch (Exception e) {
+            storageService.delete(newStorageKey);
+            throw e;
+        }
+        log.info("文件秒传成功: userId={}, fileId={}, name={}, checksum={}",
+                userId, fileNode.getId(), resolvedName, sha256);
+        return UploadCheckResponse.hit(toNodeResponse(fileNode));
     }
 
     @Override

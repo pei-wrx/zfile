@@ -26,6 +26,7 @@ import type {
   MoveNodeRequest,
   CopyNodesRequest,
   NodeIdsRequest,
+  UploadCheckResponse,
   RestoreNodeRequest,
   CreateShareRequest,
   ListSharesParams,
@@ -157,16 +158,18 @@ export const fileApi = {
     options: {
       parentId?: number | null
       conflictPolicy?: ConflictPolicy
+      sha256?: string
       onProgress?: (percent: number) => void
     } = {},
   ): Promise<Node> => {
-    const { parentId, conflictPolicy = 'REJECT', onProgress } = options
+    const { parentId, conflictPolicy = 'REJECT', sha256, onProgress } = options
     const formData = new FormData()
     formData.append('file', file)
     if (parentId != null) {
       formData.append('parentId', String(parentId))
     }
     formData.append('conflictPolicy', conflictPolicy)
+    if (sha256) formData.append('sha256', sha256)
 
     return http
       .post<ApiResponse<Node>>('/files/upload', formData, {
@@ -180,6 +183,19 @@ export const fileApi = {
       })
       .then((res) => unwrap<Node>(res))
   },
+
+  /** 预检文件是否可以直接秒传；未命中时返回 instantUploaded=false。 */
+  checkUpload: (data: {
+    parentId?: number | null
+    name: string
+    sizeBytes: number
+    sha256: string
+    conflictPolicy?: ConflictPolicy
+  }): Promise<UploadCheckResponse> =>
+    post<UploadCheckResponse>('/files/upload/check', {
+      ...data,
+      conflictPolicy: data.conflictPolicy ?? 'RENAME',
+    }),
 
   /** 下载文件，返回 Blob 和文件名 */
   async downloadFile(fileId: number): Promise<{ blob: Blob; filename: string }> {

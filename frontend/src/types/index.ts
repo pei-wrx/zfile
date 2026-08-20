@@ -168,6 +168,11 @@ export interface RestoreNodeRequest {
   conflictPolicy?: ConflictPolicy
 }
 
+export interface UploadCheckResponse {
+  instantUploaded: boolean
+  node: Node | null
+}
+
 // ============ 分享 ============
 export interface Share {
   id: number

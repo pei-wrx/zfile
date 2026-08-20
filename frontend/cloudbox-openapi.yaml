@@ -374,6 +374,10 @@ paths:
                 file:
                   type: string
                   format: binary
+                sha256:
+                  type: string
+                  pattern: '^[0-9a-fA-F]{64}$'
+                  description: 客户端预计算的 SHA-256；服务端会对实际文件再次校验
             encoding:
               file:
                 contentType: application/octet-stream
@@ -384,6 +388,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NodeResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /files/upload/check:
+    post:
+      tags: [Files]
+      operationId: checkUpload
+      summary: 预检文件秒传
+      description: 根据文件名、大小和 SHA-256 检查是否可以直接复用已有文件。命中时直接创建新节点，不需要上传文件；未命中时返回 instantUploaded=false，客户端应继续调用上传接口。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, sizeBytes, sha256, conflictPolicy]
+              properties:
+                parentId:
+                  type: integer
+                  format: int64
+                name:
+                  type: string
+                  maxLength: 255
+                sizeBytes:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                sha256:
+                  type: string
+                  pattern: '^[0-9a-fA-F]{64}$'
+                conflictPolicy:
+                  type: string
+                  enum: [REJECT, RENAME]
+      responses:
+        '200':
+          description: 预检结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUploadCheck'
         '409':
           $ref: '#/components/responses/Conflict'
         '413':
@@ -1492,6 +1536,26 @@ components:
           example: success
         data:
           $ref: '#/components/schemas/Node'
+
+    ApiResponseUploadCheck:
+      type: object
+      required: [code, message, data]
+      properties:
+        code:
+          type: string
+          example: OK
+        message:
+          type: string
+          example: success
+        data:
+          type: object
+          required: [instantUploaded]
+          properties:
+            instantUploaded:
+              type: boolean
+            node:
+              $ref: '#/components/schemas/Node'
+              nullable: true
 
     NodeDetailResponse:
       type: object
