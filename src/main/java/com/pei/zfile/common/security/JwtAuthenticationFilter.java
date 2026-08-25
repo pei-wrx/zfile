@@ -13,15 +13,14 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 import com.pei.zfile.user.entity.User;
 import com.pei.zfile.user.mapper.UserMapper;
-
 import java.io.IOException;
 import java.util.Collections;
+import static com.pei.zfile.common.util.RedisConstant.TOKEN_BLACKLIST_KEY;
 
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final String TOKEN_BLACKLIST_PREFIX = "token:blacklist:";
 
     private final JwtTokenProvider jwtTokenProvider;
     private final StringRedisTemplate stringRedisTemplate;
@@ -47,7 +46,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
             String jti = claims.getId();
-            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(TOKEN_BLACKLIST_PREFIX + jti))) {
+            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(TOKEN_BLACKLIST_KEY + jti))) {
                 filterChain.doFilter(request, response);
                 return;
             }

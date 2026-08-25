@@ -27,8 +27,7 @@ import java.util.List;
 
 @Service
 public class AdminUserServiceImpl implements AdminUserService {
-    @Autowired
-    private StorageService storageService;
+
     @Autowired
     private UserMapper userMapper;
     @Autowired

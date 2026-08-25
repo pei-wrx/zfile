@@ -2,10 +2,10 @@ package com.pei.zfile.common.security;
 
 import com.pei.zfile.common.exception.BusinessException;
 import com.pei.zfile.common.response.ResultCode;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
-
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -16,11 +16,12 @@ import java.util.List;
 @Component
 public class RedisRequestRateLimiter {
 
-    private static final DefaultRedisScript<Long> INCREMENT_SCRIPT = new DefaultRedisScript<>(
-            "local current = redis.call('incr', KEYS[1]); "
-                    + "if current == 1 then redis.call('pexpire', KEYS[1], ARGV[1]); end; "
-                    + "return current",
-            Long.class);
+    private static final DefaultRedisScript<Long> INCREMENT_SCRIPT;
+    static{
+        INCREMENT_SCRIPT = new DefaultRedisScript<>();
+        INCREMENT_SCRIPT.setLocation(new ClassPathResource("redisRequestLimit.lua"));
+        INCREMENT_SCRIPT.setResultType(Long.class);
+    }
 
     private final StringRedisTemplate redisTemplate;
 
@@ -53,7 +54,7 @@ public class RedisRequestRateLimiter {
                     .digest(identity.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is unavailable", e);
+            throw new IllegalStateException("SHA-256 不可用", e);
         }
     }
 }
