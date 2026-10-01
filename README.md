@@ -5,7 +5,7 @@
 <h1 align="center">CloudBox</h1>
 
 <p align="center">
-  私有文件管理与分享系统 · Private file management and sharing
+  文件管理与分享平台 · Private file management and sharing
 </p>
 
 <p align="center">
@@ -166,7 +166,7 @@ z-file/
 | --- | --- | --- |
 | 后端端口 | `8090` | 可在 `src/main/resources/application.yaml` 覆盖 |
 | 前端端口 | `5173` | 可在 `frontend/vite.config.ts` 调整 |
-| 数据库与 Redis | `application-local.yaml` | 本地开发配置，提交前请替换敏感信息 |
+| 数据库与 Redis | `application-local.yaml` | 本地开发配置，需自己配置 |
 | 文件目录 | `z-file.storage.local-path` | 默认使用仓库下的 `storage/` |
 | JWT 密钥 | `JWT_SECRET` | 未设置时仅生成随机开发密钥 |
 
@@ -254,15 +254,15 @@ Swagger UI is available at `http://localhost:8090/swagger-ui/index.html`. The ch
 
 ### Partial Project Effect Demonstration
 #### Home
-<img src="frontend/public/zfile1.png" alt="首页" />
+<img src="frontend/public/zfile1.png" alt="Home" />
 
 #### Inline Image Preview
 
-<img src="frontend/public/zfile2.png" alt="图片预览" />
+<img src="frontend/public/zfile2.png" alt="Inline Image Preview" />
 
 #### Inline Video Preview
 
-<img src="frontend/public/zfile3.png" alt="视频预览" />
+<img src="frontend/public/zfile3.png" alt="Inline Video Preview" />
 
 ### Security notes
 
