@@ -18,6 +18,7 @@ z-file/
 - npm 9+
 
 ## 启动后端
+启动前需先配置本地运行环境
 
 在仓库根目录执行：
 
@@ -48,4 +49,4 @@ npm run build
 mvn test
 ```
 
-前端依赖锁定在 `frontend/package-lock.json`，不要提交 `node_modules` 或 `dist`。数据库密码、JWT 密钥等敏感配置应通过环境变量或本地配置提供。
+前端依赖锁定在 `frontend/package-lock.json`
