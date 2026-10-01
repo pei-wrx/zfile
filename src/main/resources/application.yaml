@@ -1,21 +1,16 @@
 server:
   port: 8090
+
 spring:
+  profiles:
+    active: dev,local
   application:
     name: z-file
-  datasource:
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/z-file?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-    username: root
-    password: 123456
   jackson:
     default-property-inclusion: non_null
     time-zone: UTC
   data:
     redis:
-      host: localhost
-      port: 6379
-      password: 123456
       database: 3
       lettuce:
         pool:
@@ -27,18 +22,14 @@ spring:
     multipart:
       max-file-size: 120MB
       max-request-size: 121MB
+
 mybatis-plus:
   type-aliases-package: com.pei.zfile.**
   mapper-locations: classpath:mapper/*.xml
   configuration:
     map-underscore-to-camel-case: true
+
 jwt:
   secret: ${JWT_SECRET:${random.uuid}${random.uuid}}
   access-token-expiration: 1800000
-  refresh-token-expiration: 604800000
-z-file:
-  storage:
-    local-path: ./storage
-logging:
-  level:
-    com.pei: debug
+  refresh-token-expiration: 60480000000

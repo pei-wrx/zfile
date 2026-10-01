@@ -12,7 +12,6 @@ import com.pei.zfile.common.exception.BusinessException;
 import com.pei.zfile.common.response.PageResult;
 import com.pei.zfile.common.response.ResultCode;
 import com.pei.zfile.common.util.IpUtil;
-import com.pei.zfile.storage.service.StorageService;
 import com.pei.zfile.user.dto.StorageResponse;
 import com.pei.zfile.user.dto.UserResponse;
 import com.pei.zfile.user.entity.User;

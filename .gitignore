@@ -49,3 +49,5 @@ frontend/.env.*.local
 frontend/src/auto-imports.d.ts
 frontend/src/components.d.ts
 frontend/*.tsbuildinfo
+
+application-local.yaml

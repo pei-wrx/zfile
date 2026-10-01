@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_HOST:dev-mysql}:${MYSQL_PORT:3306}/${MYSQL_DB:z-file}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: ${MYSQL_USER:zfile_dev}
+    password: ${MYSQL_PASSWORD:changeme_dev}
+  data:
+    redis:
+      host: ${REDIS_HOST:dev-redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:changeme_dev}
+z-file:
+  storage:
+    local-path: ${ZFILE_STORAGE_PATH:/data/z-file/storage}
+logging:
+  level:
+    com.pei: debug
