@@ -9,15 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="#中文说明"><img src="https://img.shields.io/badge/文档-中文-1677ff?style=flat-square" alt="中文文档" /></a>
   <a href="#english"><img src="https://img.shields.io/badge/Docs-English-7c3aed?style=flat-square" alt="English documentation" /></a>
-  <img src="https://img.shields.io/badge/Java-21%2B-ed8b00?style=flat-square&logo=openjdk&logoColor=white" alt="Java 21+" />
   <img src="https://img.shields.io/badge/Spring%20Boot-3.5.7-6db33f?style=flat-square&logo=springboot&logoColor=white" alt="Spring Boot 3.5.7" />
   <img src="https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white" alt="Vue 3" />
   <img src="https://img.shields.io/badge/TypeScript-5.6-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.6" />
-  <img src="https://img.shields.io/badge/Vite-5-646cff?style=flat-square&logo=vite&logoColor=white" alt="Vite 5" />
-  <img src="https://img.shields.io/badge/Element%20Plus-2.8-409eff?style=flat-square" alt="Element Plus 2.8" />
-  <img src="https://img.shields.io/badge/MySQL-8-4479a1?style=flat-square&logo=mysql&logoColor=white" alt="MySQL 8" />
   <img src="https://img.shields.io/badge/Redis-7-dc382d?style=flat-square&logo=redis&logoColor=white" alt="Redis 7" />
 </p>
 
@@ -123,6 +118,28 @@ cd ..
 ```
 
 Swagger UI 默认地址为 `http://localhost:8090/swagger-ui/index.html`，OpenAPI 文件位于 `frontend/cloudbox-openapi.yaml`。
+
+#### 5. 使用 Docker Compose 部署到 Ubuntu
+
+在 Ubuntu 中安装 Docker Engine 和 Compose 插件后，克隆仓库并进入项目目录：
+
+```bash
+git clone https://github.com/pei-wrx/zfile.git
+cd z-file
+cp .env.example .env
+vim .env
+```
+
+修改 `.env` 中的 `MYSQL_PASSWORD`、`MYSQL_ROOT_PASSWORD`、`REDIS_PASSWORD` 和 `JWT_SECRET`。然后构建并启动：
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+默认访问地址为 `http://<>:8031`；SpringBoot 监听 `8090`，后端健康检查为 `http://<>:8090/actuator/health`，Swagger UI 为 `http://<>:8090/swagger-ui/index.html`。如果只希望开放前端入口，可以在 `docker-compose.yml` 中删除后端 `ports` 配置，前端仍会通过 Compose 内部网络访问后端。
+
+MySQL、Redis 和文件存储使用 Docker named volumes 持久化。谨慎使用 `docker compose down -v`，否则会删除这些数据卷。
 
 ### 项目结构
 

@@ -189,7 +189,7 @@
         <el-icon class="upload-icon" :size="48"><UploadFilled /></el-icon>
         <div class="el-upload__text">拖拽文件到此处，或<em>点击选择</em></div>
         <template #tip>
-          <div class="el-upload__tip">单文件上限 100 MiB，每次最多 10 个文件</div>
+          <div class="el-upload__tip">单文件上限 120 MiB，每次最多 10 个文件</div>
         </template>
       </el-upload>
       <div v-if="uploading" class="upload-progress">

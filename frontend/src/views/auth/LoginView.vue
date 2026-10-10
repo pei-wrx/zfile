@@ -8,7 +8,11 @@
 
     <div class="auth-card fade-in-up">
       <div class="auth-header">
-        <div class="auth-logo">CB</div>
+        <div class="auth-logo">
+          <svg class="logo-mark" viewBox="650 532 600 600" role="img" aria-label="CloudBox">
+            <image href="/logo.svg" x="0" y="0" width="1920" height="1920" preserveAspectRatio="none" />
+          </svg>
+        </div>
         <h1 class="auth-title">欢迎回来</h1>
         <p class="auth-subtitle">登录 CloudBox 私有文件管理系统</p>
       </div>
@@ -193,14 +197,15 @@ async function handleLogin() {
   height: 56px;
   margin: 0 auto 16px;
   border-radius: var(--cb-radius-lg);
-  background: linear-gradient(135deg, var(--cb-primary), var(--cb-accent));
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 22px;
+  background: #fff;
+  overflow: hidden;
   box-shadow: var(--cb-shadow-md);
+}
+
+.logo-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .auth-title {

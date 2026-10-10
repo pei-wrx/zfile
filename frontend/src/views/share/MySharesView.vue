@@ -72,7 +72,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="140" fixed="right" align="center">
           <template #default="{ row }">
             <div class="row-actions">
               <el-tooltip content="复制链接" placement="top">
@@ -80,8 +80,8 @@
                   <el-icon><CopyDocument /></el-icon>
                 </el-button>
               </el-tooltip>
-              <el-tooltip v-if="row.status === 'ACTIVE'" content="取消分享" placement="top">
-                <el-button text size="small" type="danger" @click="cancelShare(row as Share)">
+              <el-tooltip :disabled="row.status !== 'ACTIVE'" content="取消分享" placement="top">
+                <el-button text size="small" type="danger" :class="{ 'action-hidden': row.status !== 'ACTIVE' }" @click="row.status === 'ACTIVE' && cancelShare(row as Share)">
                   <el-icon><Close /></el-icon>
                 </el-button>
               </el-tooltip>
@@ -266,7 +266,13 @@ async function copyShareUrl(row: Share) {
 .row-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
+}
+
+.action-hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .shares-pagination {

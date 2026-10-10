@@ -46,8 +46,13 @@ frontend/dist-ssr/
 frontend/*.local
 frontend/.env.local
 frontend/.env.*.local
-frontend/src/auto-imports.d.ts
-frontend/src/components.d.ts
 frontend/*.tsbuildinfo
 
 application-local.yaml
+
+# Local deployment secrets
+.env
+.env.*
+!.env.example
+
+AGENTS.md

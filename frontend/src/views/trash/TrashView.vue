@@ -47,7 +47,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right" align="center">
           <template #default="{ row }">
             <div class="row-actions">
               <el-button text size="small" type="primary" @click="handleRestore(row as Node)">
@@ -203,6 +203,7 @@ async function handleEmptyTrash() {
 .row-actions {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
 }
 

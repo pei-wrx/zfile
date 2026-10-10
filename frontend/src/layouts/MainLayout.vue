@@ -4,7 +4,11 @@
     <aside class="sidebar" :class="{ collapsed }">
       <!-- 品牌区 -->
       <div class="brand" @click="router.push({ name: 'Files' })">
-        <div class="brand-logo">CB</div>
+        <div class="brand-logo">
+          <svg class="logo-mark" viewBox="650 532 600 600" role="img" aria-label="CloudBox">
+            <image href="/logo.svg" x="0" y="0" width="1920" height="1920" preserveAspectRatio="none" />
+          </svg>
+        </div>
         <div v-show="!collapsed" class="brand-text">
           <span class="brand-name">CloudBox</span>
           <span class="brand-subtitle">私有文件管理</span>
@@ -244,16 +248,16 @@ onMounted(() => {
   width: 36px;
   height: 36px;
   border-radius: var(--cb-radius);
-  background: linear-gradient(135deg, var(--cb-primary), var(--cb-accent));
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 14px;
+  background: #fff;
+  overflow: hidden;
   flex-shrink: 0;
-  letter-spacing: 0.5px;
   box-shadow: var(--cb-shadow-sm);
+}
+
+.logo-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .brand-text {
