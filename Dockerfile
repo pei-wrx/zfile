@@ -6,10 +6,11 @@ WORKDIR /workspace
 
 # Keep dependency resolution in its own layer so source-only changes rebuild quickly.
 COPY pom.xml .
-RUN mvn -B -ntp dependency:go-offline
+COPY docker/maven-settings.xml /root/.m2/settings.xml
+RUN mvn -B -ntp -s /root/.m2/settings.xml dependency:go-offline
 
 COPY src src
-RUN mvn -B -ntp clean package -DskipTests
+RUN mvn -B -ntp -s /root/.m2/settings.xml clean package -DskipTests
 
 FROM eclipse-temurin:21-jre-jammy
 

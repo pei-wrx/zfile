@@ -133,9 +133,14 @@ vim .env
 修改 `.env` 中的 `MYSQL_PASSWORD`、`MYSQL_ROOT_PASSWORD`、`REDIS_PASSWORD` 和 `JWT_SECRET`。然后构建并启动：
 
 ```bash
+<!-- 可以先检查compose配置 -->
+docker compose config
+
 docker compose up -d --build
 docker compose ps
 ```
+
+后端 Docker 构建使用阿里云 Maven 公共仓库下载 Java 依赖，以减少国内网络环境下访问 Maven Central 的等待时间。
 
 默认访问地址为 `http://<>:8031`；SpringBoot 监听 `8090`，后端健康检查为 `http://<>:8090/actuator/health`，Swagger UI 为 `http://<>:8090/swagger-ui/index.html`。如果只希望开放前端入口，可以在 `docker-compose.yml` 中删除后端 `ports` 配置，前端仍会通过 Compose 内部网络访问后端。
 
@@ -268,6 +273,29 @@ cd ..
 ```
 
 Swagger UI is available at `http://localhost:8090/swagger-ui/index.html`. The checked-in OpenAPI description is `frontend/cloudbox-openapi.yaml`.
+
+#### 5. Deploy with Docker Compose on Ubuntu
+After installing Docker Engine and the Compose plugin on Ubuntu, clone the repository and enter the project directory:
+```bash
+git clone https://github.com/pei-wrx/zfile.git
+cd z-file
+cp .env.example .env
+vim .env
+```
+
+Modify `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `REDIS_PASSWORD` and `JWT_SECRET` in `.env`. Then build and start:
+
+```bash
+<!-- You may validate the compose configuration first -->
+docker compose config
+
+docker compose up -d --build
+docker compose ps
+```
+
+The default access address is `http://<>:8031`; SpringBoot listens on `8090`, backend health check at `http://<>:8090/actuator/health`, Swagger UI at `http://<>:8090/swagger-ui/index.html`. If you only want to expose the frontend entry, remove the backend `ports` configuration in `docker-compose.yml`. The frontend can still access the backend through Compose internal network.
+
+MySQL, Redis and file storage use Docker named volumes for persistence. Use `docker compose down -v` carefully, otherwise these data volumes will be deleted.
 
 ### Partial Project Effect Demonstration
 #### Home
