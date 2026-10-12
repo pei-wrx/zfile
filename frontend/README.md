@@ -89,8 +89,6 @@ npm run build
 npm run preview
 ```
 
-开发服务器默认端口为 **5173**，代理配置为 `http://localhost:8080`。可在 `vite.config.ts` 中修改后端地址。
-
 ## API 对接
 
 接口严格对齐项目根目录中的 `cloudbox-openapi.yaml`，基础地址为 `/api/v1`。Vite 开发服务器已将 `/api` 代理到后端服务。
